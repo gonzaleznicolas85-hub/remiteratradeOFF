@@ -21,14 +21,12 @@ const HOJA_DETALLE = 'DETALLEREMITOS';
 const TOKEN_ESPERADO = 'REMITOSDADIGITAL-OFF';
 const VALIDAR_SKU_EN_STOCK = true;
 
-// ⚠️ CLON "remiteratradeOFF": reemplazar por el ID de una carpeta de Drive
-// NUEVA y propia de esta área (no reutilizar la del proyecto original).
-const FOLDER_ID_PDF = 'PEGAR_AQUI_ID_CARPETA_DRIVE_NUEVA';
+const FOLDER_ID_PDF = '1H7YJqkC_nds-U7l5T-DIPA4bLmpnDPEz';
 
 // Carpeta de Drive donde se guardan las fotos de producto.
 // Por defecto usa la misma carpeta que los PDFs; cambiala por el ID de una carpeta
 // dedicada si preferís mantenerlas separadas.
-const FOLDER_ID_IMAGENES = 'PEGAR_AQUI_ID_CARPETA_DRIVE_NUEVA';
+const FOLDER_ID_IMAGENES = '1H7YJqkC_nds-U7l5T-DIPA4bLmpnDPEz';
 
 /* =========================
  * BRANDING / DISEÑO PDF
