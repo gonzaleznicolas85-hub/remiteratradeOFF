@@ -1,8 +1,6 @@
 // netlify/functions/appscript-proxy.js
 // --- VALORES FIJOS (hardcode) ---
-// ⚠️ CLON "remiteratradeOFF": pegar acá la URL /exec del NUEVO deployment de Apps Script
-// (el que quede colgado del Google Sheet duplicado de esta área), una vez creado.
-const APPSCRIPT_URL = "PEGAR_AQUI_URL_EXEC_APPSCRIPT_NUEVO";
+const APPSCRIPT_URL = "https://script.google.com/macros/s/AKfycbz4OZ5AylsMYIxw0t7gzN9hRyfSNHo_6nN2CLWWh__9wUu2MeWGbe0IJi5CB4OQraY/exec";
 const API_TOKEN     = "REMITOSDADIGITAL-OFF";
 // --------------------------------
 
