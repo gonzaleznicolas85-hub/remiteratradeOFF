@@ -1,0 +1,1644 @@
+<!doctype html>
+<html lang="es">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <meta name="theme-color" content="#1d4ed8" />
+  <title>Remito multi‑SKU</title>
+  <script>
+    // Aplicar tema guardado ANTES del primer paint, para evitar flash de color equivocado.
+    (function(){
+      try {
+        var saved = localStorage.getItem('remitera-theme');
+        var theme = saved || (window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light');
+        document.documentElement.setAttribute('data-theme', theme);
+      } catch (e) {}
+    })();
+  </script>
+  <style>
+    :root {
+      --pad:12px;
+      --bg:#f4f5f7;
+      --bg-elevated:#ffffff;
+      --bg-subtle:#f9fafb;
+      --text:#111318;
+      --text-muted:#6b7280;
+      --border:#e5e7eb;
+      --border-soft:#f1f5f9;
+      --accent:#1d4ed8;
+      --accent-contrast:#ffffff;
+      --accent-soft:#e8effd;
+      --accent-soft-text:#1e40af;
+      --success:#16a34a;
+      --danger:#b91c1c;
+      --danger-contrast:#ffffff;
+      --warning:#b45309;
+      --shadow:0 1px 2px rgba(17,19,24,.05), 0 1px 1px rgba(17,19,24,.03);
+      --ease-out:cubic-bezier(.16,1,.3,1);
+      color-scheme: light;
+    }
+    :root[data-theme="dark"] {
+      --bg:#12151f;
+      --bg-elevated:#1a1f2e;
+      --bg-subtle:#1f2536;
+      --text:#eef1f8;
+      --text-muted:#9aa4bd;
+      --border:#2c3348;
+      --border-soft:#252b3d;
+      --accent:#5b8def;
+      --accent-contrast:#0c1220;
+      --accent-soft:#1c2740;
+      --accent-soft-text:#b8cdfa;
+      --success:#4ade80;
+      --danger:#f87171;
+      --danger-contrast:#2a0f0f;
+      --warning:#fbbf24;
+      --shadow:0 1px 2px rgba(0,0,0,.35), 0 4px 12px rgba(0,0,0,.25);
+      color-scheme: dark;
+    }
+    * { box-sizing: border-box; }
+    html{-webkit-text-size-adjust:100%}
+    body{font-family:system-ui,-apple-system,Segoe UI,Roboto,Ubuntu;margin:0;background:var(--bg);color:var(--text);transition:background-color .2s var(--ease-out),color .2s var(--ease-out);overflow-x:hidden}
+    header{position:sticky;top:0;display:flex;align-items:center;justify-content:space-between;gap:12px;background:var(--accent);color:var(--accent-contrast);padding:calc(12px + env(safe-area-inset-top)) 16px 12px;padding-left:calc(16px + env(safe-area-inset-left));padding-right:calc(16px + env(safe-area-inset-right));z-index:20;box-shadow:var(--shadow)}
+    header h1{font-size:clamp(15px,4vw,18px);margin:0;letter-spacing:-.01em;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+    #themeToggle{width:auto;flex:none;padding:8px 10px;min-height:40px;border-radius:10px;background:rgba(255,255,255,.16);border:1px solid rgba(255,255,255,.3);color:inherit;font-size:13px;line-height:1;display:flex;align-items:center;gap:6px;cursor:pointer}
+    :root[data-theme="dark"] #themeToggle{background:rgba(0,0,0,.25);border-color:rgba(255,255,255,.15)}
+    #themeToggle:hover{background:rgba(255,255,255,.26)}
+    main{max-width:980px;margin:0 auto;padding:16px;padding-left:calc(16px + env(safe-area-inset-left));padding-right:calc(16px + env(safe-area-inset-right));padding-bottom:calc(16px + env(safe-area-inset-bottom))}
+    @media(max-width:480px){ main{padding:12px} }
+    .card{background:var(--bg-elevated);border:1px solid var(--border);border-radius:14px;padding:var(--pad);box-shadow:var(--shadow);margin-bottom:12px}
+    label{display:block;font-size:14px;margin-bottom:6px;color:var(--text-muted)}
+    input,select,textarea,button{width:100%;padding:12px 11px;font-size:16px;border:1px solid var(--border);border-radius:10px;background:var(--bg-elevated);color:var(--text);font-family:inherit;min-height:44px}
+    input::placeholder,textarea::placeholder{color:var(--text-muted)}
+    input:focus-visible,select:focus-visible,textarea:focus-visible,button:focus-visible{outline:2px solid var(--accent);outline-offset:1px}
+    .row{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+    @media(max-width:640px){ .row{grid-template-columns:1fr} }
+    table{width:100%;border-collapse:separate;border-spacing:0 8px}
+    th{text-align:left;font-size:12px;color:var(--text-muted);padding:0 6px}
+    td{background:var(--bg-elevated);border:1px solid var(--border);border-radius:10px;padding:8px}
+    .pill{display:inline-block;font-size:12px;background:var(--accent-soft);color:var(--accent-soft-text);padding:4px 8px;border-radius:999px}
+    .actions{display:flex;gap:8px;flex-wrap:wrap}
+    .actions .btn{flex:1;min-width:140px}
+    @media(max-width:480px){ .actions .btn{min-width:100%} }
+    .btn{border-radius:12px;cursor:pointer;transition:transform .1s var(--ease-out),filter .15s var(--ease-out);min-height:44px}
+    .btn:hover{filter:brightness(1.06)}
+    .btn:active{transform:scale(.98)}
+    .btn-primary{background:var(--accent);color:var(--accent-contrast);border:1px solid var(--accent)}
+    .btn-ghost{background:var(--bg-subtle);border:1px solid var(--border);color:var(--text)}
+    .btn-danger{background:var(--danger);color:var(--danger-contrast);border:1px solid var(--danger)}
+    .right{display:flex;justify-content:flex-end}
+    .note{font-size:12px;color:var(--text-muted);margin-top:6px}
+    .ok{color:var(--success);margin-top:8px;font-weight:600}
+    .err{color:var(--danger);margin-top:8px;font-weight:600}
+    footer{text-align:center;font-size:12px;color:var(--text-muted);margin:24px 0;padding-bottom:env(safe-area-inset-bottom)}
+    .qty{width:100%;text-align:right}
+    .table-scroll{overflow-x:auto;-webkit-overflow-scrolling:touch;border-radius:10px}
+    .table-scroll table{min-width:640px}
+    nav.tabs{display:flex;gap:4px;max-width:980px;margin:0 auto;padding:8px 16px 0;padding-left:calc(16px + env(safe-area-inset-left));padding-right:calc(16px + env(safe-area-inset-right));background:var(--bg);overflow-x:auto;-webkit-overflow-scrolling:touch;scrollbar-width:none}
+    nav.tabs::-webkit-scrollbar{display:none}
+    nav.tabs button{width:auto;flex:none;padding:10px 14px;border-radius:10px 10px 0 0;background:transparent;border:1px solid transparent;color:var(--text-muted);font-weight:600;font-size:14px;white-space:nowrap;cursor:pointer;transition:background-color .15s var(--ease-out),color .15s var(--ease-out)}
+    nav.tabs button:hover{background:var(--bg-subtle);color:var(--text)}
+    nav.tabs button[aria-current="page"]{background:var(--bg-elevated);color:var(--accent);border-color:var(--border);border-bottom-color:var(--bg-elevated)}
+    .page{display:none}
+    .page.active{display:block;animation:fadeIn .18s var(--ease-out)}
+    @keyframes fadeIn{from{opacity:0;transform:translateY(2px)}to{opacity:1;transform:translateY(0)}}
+    .filters{display:grid;grid-template-columns:repeat(4,1fr);gap:8px;margin-bottom:12px}
+    @media(max-width:720px){ .filters{grid-template-columns:1fr 1fr} }
+    @media(max-width:480px){ .filters{grid-template-columns:1fr} }
+    .stock-table-wrap{max-height:60vh;overflow:auto;-webkit-overflow-scrolling:touch;border:1px solid var(--border);border-radius:10px}
+    table.grid{border-spacing:0;width:100%;min-width:680px}
+    table.grid thead th{position:sticky;top:0;background:var(--bg-subtle);border-bottom:1px solid var(--border);padding:8px;font-size:12px;text-align:left;white-space:nowrap}
+    table.grid tbody tr:nth-child(even) td{background:var(--bg-subtle)}
+    table.grid td{padding:8px;border-bottom:1px solid var(--border-soft);background:var(--bg-elevated);font-size:13px}
+    .low{color:var(--danger);font-weight:700}
+    .muted{color:var(--text-muted);font-size:12px}
+    .hist-item{background:var(--bg-elevated);border:1px solid var(--border);border-radius:10px;padding:10px;margin-bottom:8px;cursor:pointer;transition:border-color .15s var(--ease-out)}
+    .hist-item:hover{border-color:var(--accent)}
+    .hist-item .hist-head{display:flex;justify-content:space-between;flex-wrap:wrap;gap:6px}
+    .hist-lines{display:none;margin-top:8px;border-top:1px solid var(--border-soft);padding-top:8px;overflow-x:auto;-webkit-overflow-scrolling:touch}
+    .hist-lines.open{display:block}
+    .hist-lines table{width:100%;min-width:460px}
+    .badge{display:inline-block;background:var(--bg-subtle);border:1px solid var(--border);border-radius:8px;padding:2px 8px;font-size:11px;color:var(--text-muted);white-space:nowrap}
+    .refresh-row{display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;flex-wrap:wrap;gap:8px}
+    .refresh-row .btn{flex:none;width:auto}
+    .stock-thumb{width:40px;height:40px;object-fit:cover;border-radius:8px;cursor:pointer;display:block;border:1px solid var(--border)}
+    .stock-photo-btn{width:auto;padding:4px 8px;font-size:11px;white-space:nowrap;min-height:32px}
+    .catalog-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:12px}
+    @media(max-width:480px){ .catalog-grid{grid-template-columns:repeat(2,1fr);gap:8px} }
+    .catalog-card{background:var(--bg-elevated);border:1px solid var(--border);border-radius:12px;overflow:hidden;box-shadow:var(--shadow)}
+    .catalog-thumb{width:100%;aspect-ratio:1/1;object-fit:cover;background:var(--bg-subtle);display:block}
+    .catalog-noimg{width:100%;aspect-ratio:1/1;background:var(--bg-subtle);display:flex;align-items:center;justify-content:center;color:var(--text-muted);font-size:32px}
+    .catalog-body{padding:8px}
+    .catalog-sku{font-size:11px;color:var(--text-muted)}
+    .catalog-desc{font-size:13px;font-weight:600;margin:2px 0;line-height:1.3;min-height:2.6em}
+    .catalog-qty{font-size:12px;margin-top:4px}
+    .alta-foto-thumb{width:96px;height:96px;object-fit:cover;border-radius:10px;border:1px solid var(--border)}
+    .alta-foto-noimg{width:96px;height:96px;border-radius:10px;background:var(--bg-subtle);display:flex;align-items:center;justify-content:center;color:var(--text-muted);font-size:28px}
+    .nav-badge{display:inline-block;background:var(--danger);color:var(--danger-contrast);font-size:10px;font-weight:700;border-radius:999px;padding:1px 6px;margin-left:2px;vertical-align:middle;min-width:16px;text-align:center}
+    .alert-banner{max-width:980px;margin:10px auto 0;padding:12px 16px;background:var(--accent-soft);border:1px solid var(--accent);border-radius:12px;display:flex;justify-content:space-between;align-items:center;gap:12px;flex-wrap:wrap}
+    .alert-banner-text{color:var(--accent-soft-text);font-weight:600;font-size:14px}
+    .alert-banner-actions{display:flex;gap:8px}
+    .alert-banner-actions .btn{width:auto;padding:8px 12px;min-height:36px}
+    .status-cero{color:var(--danger);font-weight:700}
+    .status-bajo{color:var(--warning);font-weight:700}
+    .catalog-card{cursor:pointer;transition:transform .12s var(--ease-out),border-color .12s var(--ease-out)}
+    .catalog-card:hover{border-color:var(--accent);transform:translateY(-2px)}
+    .modal-overlay{position:fixed;inset:0;background:rgba(10,12,18,.65);display:flex;align-items:center;justify-content:center;padding:16px;z-index:50;animation:fadeIn .15s var(--ease-out)}
+    .modal-content{background:var(--bg-elevated);border-radius:16px;max-width:520px;width:100%;max-height:90vh;overflow:auto;position:relative;box-shadow:var(--shadow)}
+    .modal-close{position:absolute;top:10px;right:10px;width:36px;height:36px;min-height:36px;border-radius:999px;background:rgba(0,0,0,.55);color:#fff;border:none;font-size:15px;line-height:1;display:flex;align-items:center;justify-content:center;z-index:2;padding:0}
+    .modal-img-wrap{width:100%;max-height:60vh;overflow:auto;background:var(--bg-subtle);display:flex;align-items:center;justify-content:center;cursor:zoom-in}
+    .modal-img-wrap img{width:100%;height:auto;max-height:60vh;object-fit:contain;display:block}
+    .modal-img-wrap.zoomed{align-items:flex-start;justify-content:flex-start;cursor:zoom-out}
+    .modal-img-wrap.zoomed img{width:auto;max-width:none;height:auto;max-height:none}
+    .modal-noimg{width:100%;height:260px;display:flex;align-items:center;justify-content:center;font-size:64px;background:var(--bg-subtle);color:var(--text-muted)}
+    .modal-body{padding:16px}
+    .modal-sku{font-size:12px;color:var(--text-muted)}
+    .modal-title{font-size:18px;font-weight:700;margin:4px 0}
+    .modal-meta{color:var(--text-muted);font-size:13px;margin-bottom:8px}
+    .modal-qty{font-size:14px;font-weight:600}
+    @media (prefers-reduced-motion: reduce) {
+      *, *::before, *::after { animation-duration: .001ms !important; transition-duration: .001ms !important; }
+    }
+  </style>
+</head>
+<body>
+  <header>
+    <h1>Remito multi‑SKU</h1>
+    <button type="button" id="themeToggle" aria-label="Cambiar a modo claro/oscuro"><span id="themeIcon">🌙</span> <span id="themeLabel">Oscuro</span></button>
+  </header>
+  <nav class="tabs" role="tablist">
+    <button type="button" data-page="pg-remito" aria-current="page">Remito</button>
+    <button type="button" data-page="pg-stock">Stock</button>
+    <button type="button" data-page="pg-alta">Alta de producto</button>
+    <button type="button" data-page="pg-catalogo">Catálogo</button>
+    <button type="button" data-page="pg-alertas">🔔 Alertas <span id="alertBadge" class="nav-badge" style="display:none">0</span></button>
+    <button type="button" data-page="pg-historial">Histórico</button>
+  </nav>
+  <div id="monthlyAlertBanner" class="alert-banner" style="display:none">
+    <div class="alert-banner-text"></div>
+    <div class="alert-banner-actions">
+      <button type="button" id="alertBannerGo" class="btn btn-ghost">Ver detalle</button>
+      <button type="button" id="alertBannerClose" class="btn btn-ghost" aria-label="Cerrar aviso">✕</button>
+    </div>
+  </div>
+  <main>
+
+    <section id="pg-remito" class="page active">
+    <section class="card">
+      <div class="row">
+        <div>
+          <label>Fecha</label>
+          <input type="date" id="fecha" required />
+        </div>
+        <div>
+          <label>Punto de venta / Cliente</label>
+          <input type="text" id="punto" placeholder="Ej: MDP - Centro" required />
+        </div>
+      </div>
+      <div class="row" style="margin-top:10px">
+        <div>
+          <label>Usuario</label>
+          <select id="usuarioSelect">
+            <option value="">Seleccioná...</option>
+            <option value="GASTON DEL RIO">GASTON DEL RIO</option>
+            <option value="JOAQUIN CRUZ">JOAQUIN CRUZ</option>
+            <option value="MAXIMILIANO DI PIETRO">MAXIMILIANO DI PIETRO</option>
+            <option value="RAMON LAZARTE">RAMON LAZARTE</option>
+            <option value="MARIANO DIAZ">MARIANO DIAZ</option>
+            <option value="FEDERICO BARBUTTI">FEDERICO BARBUTTI</option>
+            <option value="GUILLERMO ANUNNZIATA">GUILLERMO ANUNNZIATA</option>
+            <option value="LAURA MILANOVICH">LAURA MILANOVICH</option>
+            <option value="MATIAS SUAREZ">MATIAS SUAREZ</option>
+            <option value="JOSE CAPORALETTI">JOSE CAPORALETTI</option>
+            <option value="__otro__">Otro...</option>
+          </select>
+          <input type="text" id="usuario" placeholder="Escribí el nombre" style="display:none;margin-top:8px" />
+        </div>
+        <div>
+          <label>Observaciones</label>
+          <input type="text" id="obs" placeholder="Opcional" />
+        </div>
+      </div>
+      <div class="note">Nº de remito se genera automático (R0001, R0002...).</div>
+    </section>
+
+    <section class="card">
+      <div class="actions" style="margin-bottom:8px">
+        <button class="btn btn-ghost" id="addLine">+ Agregar producto</button>
+        <button class="btn btn-ghost" id="clearLines">Vaciar líneas</button>
+      </div>
+
+      <div class="table-scroll">
+        <table>
+          <thead>
+            <tr>
+              <th>SKU (escribí o elegí)</th>
+              <th>Descripción</th>
+              <th>Tipo</th>
+              <th>Marca</th>
+              <th style="text-align:right">Cant.</th>
+              <th></th>
+            </tr>
+          </thead>
+          <tbody id="tbody"></tbody>
+        </table>
+      </div>
+      <div class="right" style="margin-top:6px">
+        <span class="pill">Total ítems: <span id="totalQty">0</span></span>
+      </div>
+    </section>
+
+    <section class="card right">
+      <div class="actions">
+        <button class="btn btn-primary" id="submitBtn">Registrar remito</button>
+      </div>
+    </section>
+
+    <div id="msg"></div>
+    </section>
+
+    <section id="pg-stock" class="page">
+      <section class="card">
+        <div class="refresh-row">
+          <div class="note" style="margin:0">Stock real, en vivo desde tu Google Sheet.</div>
+          <div class="actions" style="width:auto">
+            <button class="btn btn-ghost" id="stockClearFilters">Limpiar filtros</button>
+            <button class="btn btn-ghost" id="stockRefresh" style="width:auto">↻ Actualizar</button>
+          </div>
+        </div>
+        <div class="filters">
+          <input type="text" id="stockSearch" placeholder="Buscar SKU o descripción..." />
+          <select id="stockTipo"><option value="">Tipo (todos)</option></select>
+          <select id="stockMarca"><option value="">Marca (todos)</option></select>
+          <select id="stockBajo">
+            <option value="">Todo el stock</option>
+            <option value="bajo">Solo stock bajo (&lt;=5)</option>
+            <option value="cero">Solo sin stock (0)</option>
+          </select>
+        </div>
+        <div class="stock-table-wrap">
+          <table class="grid">
+            <thead>
+              <tr><th>Foto</th><th>SKU</th><th>Descripción</th><th>Tipo</th><th>Marca</th><th>Stock inicial</th><th>Entregado</th><th>Stock actual</th></tr>
+            </thead>
+            <tbody id="stockBody"><tr><td colspan="8" class="muted">Cargando...</td></tr></tbody>
+          </table>
+        </div>
+        <div class="note" id="stockCount" style="margin-top:8px"></div>
+        <div class="note">Click en la foto (o en "+ Foto") para subir o reemplazar la imagen de un producto.</div>
+      </section>
+      <input type="file" id="stockUploadFileHidden" accept="image/*" capture="environment" style="display:none" />
+    </section>
+
+    <section id="pg-alta" class="page">
+      <section class="card">
+        <div class="note" style="margin-bottom:10px">Buscá un SKU si querés sumarle stock a un producto existente. Para un producto nuevo no hace falta: el código se genera solo.</div>
+        <label>SKU (opcional — dejalo vacío para un producto nuevo)</label>
+        <input type="text" id="altaSkuBuscar" placeholder="Ej: 10331 (dejar vacío si es nuevo)" />
+        <div class="note" id="altaSkuHint"></div>
+        <button type="button" class="btn btn-ghost" id="altaNuevoAutoBtn" style="width:auto;margin-top:10px">+ Producto nuevo (SKU automático)</button>
+      </section>
+
+      <!-- Producto YA existente: sumar stock + foto -->
+      <section class="card" id="altaExistentePanel" style="display:none">
+        <div style="display:flex;gap:12px;align-items:flex-start;flex-wrap:wrap">
+          <div id="altaExistenteFotoWrap" style="width:96px;flex:none"></div>
+          <div style="flex:1;min-width:180px">
+            <div style="font-weight:600" id="altaExistenteDescripcion"></div>
+            <div class="muted" id="altaExistenteMeta"></div>
+            <div class="muted">Stock actual: <strong id="altaExistenteStockActual"></strong></div>
+          </div>
+        </div>
+        <div class="row" style="margin-top:12px">
+          <div>
+            <label>Sumar cantidad al stock</label>
+            <input type="number" id="altaExistenteCantidad" min="1" value="1" />
+          </div>
+          <div>
+            <label id="altaExistenteFileLabel">Agregar foto</label>
+            <input type="file" id="altaExistenteFile" accept="image/*" capture="environment" />
+          </div>
+        </div>
+      </section>
+      <section class="card right" id="altaExistenteSubmitWrap" style="display:none">
+        <div class="actions">
+          <button class="btn btn-primary" id="altaExistenteSubmit">Sumar stock</button>
+        </div>
+      </section>
+
+      <!-- Producto NUEVO -->
+      <section class="card" id="altaNuevoPanel" style="display:none">
+        <div class="note" style="margin-bottom:10px">Producto nuevo. SKU: <strong id="altaNuevoSkuDisplay">se generará automáticamente</strong></div>
+        <div class="row">
+          <div>
+            <label>Descripción *</label>
+            <input type="text" id="altaDescripcion" placeholder="Ej: VASO NUEVO X12u" />
+          </div>
+          <div>
+            <label>Tipo</label>
+            <input type="text" id="altaTipo" placeholder="Ej: VASO" />
+          </div>
+        </div>
+        <div class="row" style="margin-top:10px">
+          <div>
+            <label>Marca</label>
+            <input type="text" id="altaMarca" placeholder="Ej: QUILMES" />
+          </div>
+          <div>
+            <label>Stock inicial</label>
+            <input type="number" id="altaStockInicial" min="0" value="0" />
+          </div>
+        </div>
+        <div class="row" style="margin-top:10px">
+          <div>
+            <label>Foto (opcional)</label>
+            <input type="file" id="altaNuevoFile" accept="image/*" capture="environment" />
+          </div>
+        </div>
+      </section>
+      <section class="card right" id="altaNuevoSubmitWrap" style="display:none">
+        <div class="actions">
+          <button class="btn btn-primary" id="altaSubmit">Guardar producto nuevo</button>
+        </div>
+      </section>
+
+      <div id="altaMsg"></div>
+    </section>
+
+    <section id="pg-catalogo" class="page">
+      <section class="card">
+        <div class="refresh-row">
+          <div class="note" style="margin:0">Catálogo completo: foto, descripción y cantidad real de cada SKU.</div>
+          <div class="actions" style="width:auto">
+            <button class="btn btn-ghost" id="catalogoClearFilters">Limpiar filtros</button>
+            <button class="btn btn-ghost" id="catalogoRefresh" style="width:auto">↻ Actualizar</button>
+          </div>
+        </div>
+        <div class="filters">
+          <input type="text" id="catalogoSearch" placeholder="Buscar SKU o descripción..." />
+          <select id="catalogoTipo"><option value="">Tipo (todos)</option></select>
+          <select id="catalogoMarca"><option value="">Marca (todos)</option></select>
+          <select id="catalogoConFoto">
+            <option value="">Con y sin foto</option>
+            <option value="con">Solo con foto</option>
+            <option value="sin">Solo sin foto</option>
+          </select>
+        </div>
+        <div id="catalogoGrid" class="catalog-grid"><div class="muted">Cargando...</div></div>
+        <div class="note" id="catalogoCount" style="margin-top:8px"></div>
+      </section>
+    </section>
+
+    <section id="pg-alertas" class="page">
+      <section class="card">
+        <div class="refresh-row">
+          <div class="note" style="margin:0">Productos sin stock o con stock bajo (≤5), calculado al momento desde tu Google Sheet.</div>
+          <button class="btn btn-ghost" id="alertasRefresh" style="width:auto">↻ Actualizar</button>
+        </div>
+        <div class="note" id="alertasSummary" style="margin-bottom:10px;font-weight:600;color:var(--text)"></div>
+        <div class="stock-table-wrap">
+          <table class="grid">
+            <thead>
+              <tr><th>Estado</th><th>SKU</th><th>Descripción</th><th>Tipo</th><th>Marca</th><th style="text-align:right">Stock actual</th></tr>
+            </thead>
+            <tbody id="alertasBody"><tr><td colspan="6" class="muted">Cargando...</td></tr></tbody>
+          </table>
+        </div>
+        <div class="note" style="margin-top:8px">Este aviso también aparece como banner arriba de la página una vez al mes (por navegador) si hay algo en stock bajo o agotado.</div>
+      </section>
+    </section>
+
+    <section id="pg-historial" class="page">
+      <section class="card">
+        <div class="refresh-row">
+          <div class="note" style="margin:0">Todo lo entregado, agrupado por remito.</div>
+          <div class="actions" style="width:auto">
+            <button class="btn btn-ghost" id="histClearFilters">Limpiar filtros</button>
+            <button class="btn btn-ghost" id="histRefresh" style="width:auto">↻ Actualizar</button>
+          </div>
+        </div>
+        <div class="filters">
+          <input type="text" id="histSearch" placeholder="Buscar punto de venta, usuario o Nº remito..." />
+          <input type="text" id="histSku" placeholder="Buscar por SKU o producto entregado..." />
+          <select id="histUsuario"><option value="">Usuario (todos)</option></select>
+          <select id="histOrden">
+            <option value="desc">Más recientes primero</option>
+            <option value="asc">Más antiguos primero</option>
+          </select>
+        </div>
+        <div class="filters" style="grid-template-columns:1fr 1fr">
+          <div>
+            <label class="note" style="margin:0 0 4px">Desde</label>
+            <input type="date" id="histFechaDesde" />
+          </div>
+          <div>
+            <label class="note" style="margin:0 0 4px">Hasta</label>
+            <input type="date" id="histFechaHasta" />
+          </div>
+        </div>
+        <div id="histList"><div class="muted">Cargando...</div></div>
+
+        <div class="note" style="margin-top:16px;font-weight:600;color:var(--text)">Últimos pedidos entregados</div>
+        <div class="stock-table-wrap" style="max-height:40vh;margin-top:6px">
+          <table class="grid">
+            <thead>
+              <tr><th>Nº</th><th>Fecha</th><th>Punto de venta</th><th>Usuario</th><th style="text-align:right">Ítems</th><th>PDF</th></tr>
+            </thead>
+            <tbody id="histRecentBody"></tbody>
+          </table>
+        </div>
+      </section>
+    </section>
+
+    <footer>Trade Marketing</footer>
+  </main>
+
+  <div id="catalogModal" class="modal-overlay" style="display:none" role="dialog" aria-modal="true" aria-labelledby="catalogModalTitle">
+    <div class="modal-content">
+      <button type="button" id="catalogModalClose" class="modal-close" aria-label="Cerrar">✕</button>
+      <div class="modal-img-wrap" id="catalogModalImgWrap">
+        <img id="catalogModalImg" src="" alt="" style="display:none" />
+        <div id="catalogModalNoImg" class="modal-noimg" style="display:none">📦</div>
+      </div>
+      <div class="modal-body">
+        <div class="modal-sku" id="catalogModalSku"></div>
+        <div class="modal-title" id="catalogModalTitle"></div>
+        <div class="modal-meta" id="catalogModalMeta"></div>
+        <div class="modal-qty" id="catalogModalQty"></div>
+        <div class="note" id="catalogModalZoomHint" style="margin-top:8px"></div>
+      </div>
+    </div>
+  </div>
+
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js" crossorigin="anonymous" referrerpolicy="no-referrer"></script>
+  <script>
+    const PRODUCTS = [
+{sku:'10000', descripcion:'VASO SIDRA 1930 330CC X24u', tipo:'VASO', marca:'1930'},
+{sku:'10001', descripcion:'PIZARRA PIE SIDRA 1930', tipo:'PIZARRA', marca:'1930'},
+{sku:'10002', descripcion:'PIZARRA PARED SIDRA 1930', tipo:'PIZARRA', marca:'1930'},
+{sku:'10003', descripcion:'FRAPERA SIDRA 1930', tipo:'FRAPERA', marca:'1930'},
+{sku:'10004', descripcion:'FRAPERON SIDRA 1930', tipo:'FRAPERON', marca:'1930'},
+{sku:'10005', descripcion:'ECO VASO PLASTICOS 7UP 500CC', tipo:'VASO', marca:'7 UP'},
+{sku:'10006', descripcion:'ECO VASO PLASTICOS ANDES ORIGEN 500CC', tipo:'VASO', marca:'ANDES ORIGEN'},
+{sku:'10007', descripcion:'COPA ANDES ORIGEN 330CC X6u', tipo:'COPA', marca:'ANDES ORIGEN'},
+{sku:'10008', descripcion:'FRAPERA ANDES ORIGEN BLANCA', tipo:'FRAPERA', marca:'ANDES ORIGEN'},
+{sku:'10009', descripcion:'FRAPERA ANDES ORIGEN MARRON', tipo:'FRAPERA', marca:'ANDES ORIGEN'},
+{sku:'10010', descripcion:'BEERMAT ANDES ORIGEN', tipo:'BEERMAT', marca:'ANDES ORIGEN'},
+{sku:'10011', descripcion:'PINGÜINO ANDES ORIGEN', tipo:'PINGUIÑO', marca:'ANDES ORIGEN'},
+{sku:'10012', descripcion:'CHAPON ANDES ORIGEN', tipo:'CARTEL', marca:'ANDES ORIGEN'},
+{sku:'10013', descripcion:'PIZARRA PARED ANDES ORIGEN', tipo:'PIZARRA', marca:'ANDES ORIGEN'},
+{sku:'10014', descripcion:'PIZARRA PIE ANDES ORIGEN "MENU DEL DIA"', tipo:'PIZARRA', marca:'ANDES ORIGEN'},
+{sku:'10015', descripcion:'PIZARRA PIE ANDES ORIGEN', tipo:'PIZARRA', marca:'ANDES ORIGEN'},
+{sku:'10016', descripcion:'SALIENTE OXIDADO ANDES ORIGEN (COPA/A)', tipo:'CARTEL', marca:'ANDES ORIGEN'},
+{sku:'10017', descripcion:'TABLA MARIDAJE ANDES ORIGEN', tipo:'TABLA', marca:'ANDES ORIGEN'},
+{sku:'10018', descripcion:'POSAVASO ANDES ORIGEN', tipo:'POSAVASO', marca:'ANDES ORIGEN'},
+{sku:'10019', descripcion:'TABLETENT ANDES ORIGEN', tipo:'TABLETENT', marca:'ANDES ORIGEN'},
+{sku:'10020', descripcion:'SERVILLETERO DIVISOR ANDES ORIGEN', tipo:'SERVILLETERO', marca:'ANDES ORIGEN'},
+{sku:'10021', descripcion:'CORPOREO POLIFAN ANDES ORIGEN', tipo:'CARTEL', marca:'ANDES ORIGEN'},
+{sku:'10022', descripcion:'COPERO ANDES', tipo:'COPERO', marca:'ANDES ORIGEN'},
+{sku:'10023', descripcion:'TABLETENT DIGITAL COUPONSANDES ORIGEN', tipo:'TABLETENT', marca:'ANDES ORIGEN'},
+{sku:'10024', descripcion:'A DE HIERRO ANDES ORIGEN GRANDE', tipo:'CARTEL', marca:'ANDES ORIGEN'},
+{sku:'10025', descripcion:'CUADRO CERAMICO ANDES ORIGEN', tipo:'CARTEL', marca:'ANDES ORIGEN'},
+{sku:'10026', descripcion:'CORPOREO ANDES ORIGEN CHAPA (FINITO)', tipo:'CARTEL', marca:'ANDES ORIGEN'},
+{sku:'10027', descripcion:'SALIENTE REDONDO LED ANDES ORIGEN', tipo:'CARTEL', marca:'ANDES ORIGEN'},
+{sku:'10028', descripcion:'A DE HIERRO ANDES ORIGEN CHICA', tipo:'CARTEL', marca:'ANDES ORIGEN'},
+{sku:'10029', descripcion:'PIZARRA PIE ANDES ORIGEN DIGITAL COUPONS', tipo:'PIZARRA', marca:'ANDES ORIGEN'},
+{sku:'10030', descripcion:'VASO GIN BOSQUE 300CC X24u', tipo:'VASO', marca:'BOSQUE'},
+{sku:'10031', descripcion:'COPA TALLO GIN BOSQUE X12u', tipo:'COPA', marca:'BOSQUE'},
+{sku:'10032', descripcion:'BACKLIGHT GIN BOSQUE', tipo:'CARTEL', marca:'BOSQUE'},
+{sku:'10033', descripcion:'CARTEL BOSQUE SIN LUZ', tipo:'CARTEL', marca:'BOSQUE'},
+{sku:'10034', descripcion:'PORTA GARNISH BOSQUE', tipo:'PORTAGARNISH', marca:'BOSQUE'},
+{sku:'10035', descripcion:'CARTEL ESTANTERIA BOSQUE CON LUZ', tipo:'CARTEL', marca:'BOSQUE'},
+{sku:'10036', descripcion:'BACKLIGHT LED BRAHMA ROJO', tipo:'CARTEL', marca:'BRAHMA'},
+{sku:'10037', descripcion:'ECO VASO BRAHMA 500CC', tipo:'VASO', marca:'BRAHMA'},
+{sku:'10038', descripcion:'VASO BRAHMA 330CC X48u', tipo:'VASO', marca:'BRAHMA'},
+{sku:'10039', descripcion:'VASO BRAHMA 500CC X6u', tipo:'VASO', marca:'BRAHMA'},
+{sku:'10040', descripcion:'BEERMAT BRAHMA GRANDE', tipo:'BEERMAT', marca:'BRAHMA'},
+{sku:'10041', descripcion:'DESTAPADOR BRAHMA ROJO', tipo:'DESTAPADOR', marca:'BRAHMA'},
+{sku:'10042', descripcion:'DESTAPADOR BRAHMA GRIS', tipo:'DESTAPADOR', marca:'BRAHMA'},
+{sku:'10043', descripcion:'PIZARRA PIE BRAHMA', tipo:'PIZARRA', marca:'BRAHMA'},
+{sku:'10044', descripcion:'PIZARRA PARED BRAHMA', tipo:'PIZARRA', marca:'BRAHMA'},
+{sku:'10045', descripcion:'FRAPERA BRAHMA CUADRADA', tipo:'FRAPERA', marca:'BRAHMA'},
+{sku:'10046', descripcion:'FRAPERA BRAHMA OVALADA', tipo:'FRAPERA', marca:'BRAHMA'},
+{sku:'10047', descripcion:'FRAPERA BRAHMA BALDE PLASTICO', tipo:'FRAPERA', marca:'BRAHMA'},
+{sku:'10048', descripcion:'CARTEL BRAHMA ESPEJADO', tipo:'CARTEL', marca:'BRAHMA'},
+{sku:'10049', descripcion:'BACKLIGHT BRAHMA ABIERTO/CERRADO', tipo:'CARTEL', marca:'BRAHMA'},
+{sku:'10050', descripcion:'CARTEL BRAHMA POLIFAN GRANDE', tipo:'CARTEL', marca:'BRAHMA'},
+{sku:'10051', descripcion:'BACKLIGHT BRAHMA GIGANTE CHAPA', tipo:'CARTEL', marca:'BRAHMA'},
+{sku:'10052', descripcion:'BACKLIGHT ACRILICO BRAHMA', tipo:'CARTEL', marca:'BRAHMA'},
+{sku:'10053', descripcion:'KIT BANDERINES BRAHMA', tipo:'KIT', marca:'BRAHMA'},
+{sku:'10054', descripcion:'GUIRNALDAS BRAHMA CON LUZ', tipo:'GUIRNALDAS', marca:'BRAHMA'},
+{sku:'10055', descripcion:'TABLETENT BRAHMA MADERA', tipo:'TABLETENT', marca:'BRAHMA'},
+{sku:'10056', descripcion:'TABLETENT BRAHMA METAL', tipo:'TABLETENT', marca:'BRAHMA'},
+{sku:'10057', descripcion:'COOLER BRAHMA', tipo:'COOLER', marca:'BRAHMA'},
+{sku:'10058', descripcion:'POSAVASO BRAHMA', tipo:'POSAVASO', marca:'BRAHMA'},
+{sku:'10059', descripcion:'VASO BRAHMA 2021 330CC X12u', tipo:'VASO', marca:'BRAHMA'},
+{sku:'10060', descripcion:'CORPOREO BRAHMA "DRAHMA" NEON 2022', tipo:'CARTEL', marca:'BRAHMA'},
+{sku:'10061', descripcion:'CORPOREO BRAHMA "JUNTADA" NEON 2022', tipo:'CARTEL', marca:'BRAHMA'},
+{sku:'10062', descripcion:'SERVILLETERO DIVISOR BRAHMA', tipo:'SERVILLETERO', marca:'BRAHMA'},
+{sku:'10063', descripcion:'TABLETENT DIGITAL COUPONSBRAHMA', tipo:'TABLETENT', marca:'BRAHMA'},
+{sku:'10064', descripcion:'POLIFAN BRAHMA CHICO', tipo:'CARTEL', marca:'BRAHMA'},
+{sku:'10065', descripcion:'LATON BRAHMA EXHIBICION LED', tipo:'LATON', marca:'BRAHMA'},
+{sku:'10066', descripcion:'PIZARRA PIE BRAHMA DIGITAL COUPONS', tipo:'PIZARRA', marca:'BRAHMA'},
+{sku:'10067', descripcion:'BACKLIGHT CHAPITA BRAHMA', tipo:'CARTEL', marca:'BRAHMA'},
+{sku:'10068', descripcion:'CARTEL BRAHMA + NO HAY DRAMA ROJO', tipo:'CARTEL', marca:'BRAHMA'},
+{sku:'10069', descripcion:'CARTEL BRAHMA FONDO NEGRO CON CHAPITA LED ROJO', tipo:'CARTEL', marca:'BRAHMA'},
+{sku:'10070', descripcion:'CARTEL BRAHMA GRANDE LED MADERA N&B', tipo:'CARTEL', marca:'BRAHMA'},
+{sku:'10071', descripcion:'CARTEL BRAHMA FONDO MADERA LETRA NEGRA CHAPA', tipo:'CARTEL', marca:'BRAHMA'},
+{sku:'10072', descripcion:'VASO BUDWEISER 300CC X6u', tipo:'VASO', marca:'BUDWEISER'},
+{sku:'10073', descripcion:'FRAPERA BUDWEISER ROJA', tipo:'FRAPERA', marca:'BUDWEISER'},
+{sku:'10074', descripcion:'PIZARRA PIE DISCO BUDWEISER', tipo:'PIZARRA', marca:'BUDWEISER'},
+{sku:'10075', descripcion:'PIZARRA PARED MADERA NEGRA BUDWEISER', tipo:'PIZARRA', marca:'BUDWEISER'},
+{sku:'10076', descripcion:'PIZARRA PARED LED BUDWEISER', tipo:'PIZARRA', marca:'BUDWEISER'},
+{sku:'10077', descripcion:'BEERMAT BUDWEISER ROJO', tipo:'BEERMAT', marca:'BUDWEISER'},
+{sku:'10078', descripcion:'DESTAPADOR BUDWEISER GRIS', tipo:'DESTAPADOR', marca:'BUDWEISER'},
+{sku:'10079', descripcion:'VASO BUDWEISER 300CC ACRILICO', tipo:'VASO', marca:'BUDWEISER'},
+{sku:'10080', descripcion:'CHAPON RETRO BUD', tipo:'CARTEL', marca:'BUDWEISER'},
+{sku:'10081', descripcion:'PORTA BURGER BUDWEISER', tipo:'PORTA HAMBURGERSA', marca:'BUDWEISER'},
+{sku:'10082', descripcion:'POSAVASO BUDWEISER', tipo:'POSAVASO', marca:'BUDWEISER'},
+{sku:'10083', descripcion:'TABLETENT BUDWEISER', tipo:'TABLETENT', marca:'BUDWEISER'},
+{sku:'10084', descripcion:'CORPOREO NEON "BUDWEISER" ALARGADO', tipo:'CARTEL', marca:'BUDWEISER'},
+{sku:'10085', descripcion:'CORPOREO NEON MOÑO BUDWEISER', tipo:'CARTEL', marca:'BUDWEISER'},
+{sku:'10086', descripcion:'SALIENTE "BUDWEISER" LED PUNTO ROJO', tipo:'CARTEL', marca:'BUDWEISER'},
+{sku:'10087', descripcion:'TABLETENT SERVILLETERO BUDWEISER', tipo:'TABLETENT/SERVILLETERO', marca:'BUDWEISER'},
+{sku:'10088', descripcion:'BACKLIGHT CHAPA BUDWEISER LED ROJO', tipo:'CARTEL', marca:'BUDWEISER'},
+{sku:'10089', descripcion:'BANDEJA BUD ROJA', tipo:'BANDEJA', marca:'BUDWEISER'},
+{sku:'10090', descripcion:'ABANICOS BUDWEISER', tipo:'ABANICOS', marca:'BUDWEISER'},
+{sku:'10091', descripcion:'', tipo:'', marca:''},
+{sku:'10092', descripcion:'', tipo:'', marca:''},
+{sku:'10093', descripcion:'', tipo:'', marca:''},
+{sku:'10094', descripcion:'', tipo:'', marca:''},
+{sku:'10095', descripcion:'', tipo:'', marca:''},
+{sku:'10096', descripcion:'COPA CHACHINGO X 12', tipo:'COPA', marca:'CHACHINGO'},
+{sku:'10097', descripcion:'TABLA SURF MADERA GRANDE', tipo:'TABLA SURF', marca:'CORONA'},
+{sku:'10098', descripcion:'CORPOREO CORONA LED 3D ( PLASTICO OXIDO)', tipo:'CARTEL', marca:'CORONA'},
+{sku:'10099', descripcion:'CORPOREO CORONA 100 AÑOS LED 3D BLANCO', tipo:'CARTEL', marca:'CORONA'},
+{sku:'10100', descripcion:'FRAPERA CORONA', tipo:'FRAPERA', marca:'CORONA'},
+{sku:'10101', descripcion:'FRAPERON CORONA', tipo:'FRAPERA', marca:'CORONA'},
+{sku:'10102', descripcion:'FRAPERA PORTA LIMA CORONA', tipo:'FRAPERA', marca:'CORONA'},
+{sku:'10103', descripcion:'BEERMAT CORONA AZUL CON LIMAS', tipo:'BEERMAT', marca:'CORONA'},
+{sku:'10104', descripcion:'CORTA LIMA CORONA', tipo:'CORTA LIMA', marca:'CORONA'},
+{sku:'10105', descripcion:'CORPOREO MADERA / POLIFAN CORONA', tipo:'CARTEL', marca:'CORONA'},
+{sku:'10106', descripcion:'CORPOREO BOMBITAS CORONA', tipo:'CARTEL', marca:'CORONA'},
+{sku:'10107', descripcion:'PIZARRA PARED CORONA PRECIO PORRON 330', tipo:'PIZARRA', marca:'CORONA'},
+{sku:'10108', descripcion:'PIZARRA PARED CORONA RITUAL', tipo:'PIZARRA', marca:'CORONA'},
+{sku:'10109', descripcion:'PIZARRA PARED CORONA', tipo:'PIZARRA', marca:'CORONA'},
+{sku:'10110', descripcion:'PIZARRA PIE CORONA TABLA SURF', tipo:'PIZARRA', marca:'CORONA'},
+{sku:'10111', descripcion:'GLORIFICADOR CORONA REPOSERA', tipo:'GLORIFICADOR', marca:'CORONA'},
+{sku:'10112', descripcion:'GLORIFICADOR CORONA LED', tipo:'GLORIFICADOR', marca:'CORONA'},
+{sku:'10113', descripcion:'DISPENSER CORONA PARA LIMA', tipo:'DISPENSER', marca:'CORONA'},
+{sku:'10114', descripcion:'ATRAPASUEÑOS CORONA TELA', tipo:'ATRAPA SUEÑO', marca:'CORONA'},
+{sku:'10115', descripcion:'GUIRNALDAS CON LUZ CORONA', tipo:'GUIRNALDA', marca:'CORONA'},
+{sku:'10116', descripcion:'GUIRNALDAS DE TELA', tipo:'GUIRNALDA', marca:'CORONA'},
+{sku:'10117', descripcion:'TABLETENT CORONA', tipo:'TABLETENT', marca:'CORONA'},
+{sku:'10118', descripcion:'TABLA DE CORTE CORONA MADERA', tipo:'TABLA', marca:'CORONA'},
+{sku:'10119', descripcion:'ECO VASO CORONA', tipo:'VASO', marca:'CORONA'},
+{sku:'10120', descripcion:'COOLER CORONA', tipo:'COOLER', marca:'CORONA'},
+{sku:'10121', descripcion:'PIZARRA PIE CORONA PLEGABLE', tipo:'PIZARRA', marca:'CORONA'},
+{sku:'10122', descripcion:'MANTA CORONA', tipo:'MANTA', marca:'CORONA'},
+{sku:'10123', descripcion:'CARTEL CORONA 100 AÑOS MADERA CORPOREO', tipo:'CARTEL', marca:'CORONA'},
+{sku:'10124', descripcion:'CORPOREO PINTADO CORONA', tipo:'CARTEL', marca:'CORONA'},
+{sku:'10125', descripcion:'SERVILLETERO DIVISOR CORONA', tipo:'SERVILLETERO', marca:'CORONA'},
+{sku:'10126', descripcion:'SOL CORONA', tipo:'CARTEL', marca:'CORONA'},
+{sku:'10127', descripcion:'TABLETENT DIGITAL COUPONSCORONA', tipo:'TABLETENT', marca:'CORONA'},
+{sku:'10128', descripcion:'CORPÓREO CORONA LED BLANCO ALTO IMPACTO', tipo:'CARTEL', marca:'CORONA'},
+{sku:'10129', descripcion:'TABLETENT SERVILLETERO CORONA', tipo:'TABLETENT/SERVILLETERO', marca:'CORONA'},
+{sku:'10130', descripcion:'PIZARRA PIE CORONA DIGITAL COUPONS', tipo:'PIZARRA', marca:'CORONA'},
+{sku:'10131', descripcion:'SACACORCHO DANTE ROBINO ELECTRICO', tipo:'SACACORCHO', marca:'DANTE ROBINO'},
+{sku:'10132', descripcion:'SACACORCHO DANTE ROBINO METAL', tipo:'SACACORCHO', marca:'DANTE ROBINO'},
+{sku:'10133', descripcion:'CORTA GOTA DANTE ROBINO PLATEADO', tipo:'CORTA GOTA', marca:'DANTE ROBINO'},
+{sku:'10134', descripcion:'DELANTAL DANTE ROBINO', tipo:'DELANTAL', marca:'DANTE ROBINO'},
+{sku:'10135', descripcion:'FLADON DANTE ROBINO', tipo:'FALDONES', marca:'DANTE ROBINO'},
+{sku:'10136', descripcion:'BOMBA DE VACIO DANTE ROBINO', tipo:'BOMBA DE VACIO', marca:'DANTE ROBINO'},
+{sku:'10137', descripcion:'FRAPERA DANTE ROBINO METAL NEGRA', tipo:'FRAPERA', marca:'DANTE ROBINO'},
+{sku:'10138', descripcion:'FRAPERA CAPRICCIO PLASTICO BLANCA', tipo:'FRAPERA', marca:'DANTE ROBINO'},
+{sku:'10139', descripcion:'FRAPERA NOVECCENTO PLASTICO NEGRO', tipo:'FRAPERA', marca:'DANTE ROBINO'},
+{sku:'10140', descripcion:'PIZARRA PIE DANTE ROBINO', tipo:'PIZARRA', marca:'DANTE ROBINO'},
+{sku:'10141', descripcion:'PIZARRA PARED DANTE ROBINO', tipo:'PIZARRA', marca:'DANTE ROBINO'},
+{sku:'10142', descripcion:'VASO DANTE ROBINO X12u', tipo:'VASO', marca:'DANTE ROBINO'},
+{sku:'10143', descripcion:'COPA DANTE ROBINO CON TALLO X12u', tipo:'COPA', marca:'DANTE ROBINO'},
+{sku:'10144', descripcion:'COPA FLAUTA DANTE ROBINO X12u', tipo:'COPA', marca:'DANTE ROBINO'},
+{sku:'10145', descripcion:'JARRA VIDRIO DANTE ROBINO', tipo:'JARRA', marca:'DANTE ROBINO'},
+{sku:'10146', descripcion:'DECANTADOR DANTE ROBINO', tipo:'DECANTADOR', marca:'DANTE ROBINO'},
+{sku:'10147', descripcion:'CAJA DE MADERA DANTE ROBINO', tipo:'CAJA', marca:'DANTE ROBINO'},
+{sku:'10148', descripcion:'ASAPARRI DANTE ROBINO', tipo:'PARRILA', marca:'DANTE ROBINO'},
+{sku:'10149', descripcion:'MANTA DANTE ROBINO', tipo:'MANTA', marca:'DANTE ROBINO'},
+{sku:'10150', descripcion:'CARTEL DANTE ROBINO LED ACRILICO', tipo:'CARTEL', marca:'DANTE ROBINO'},
+{sku:'10151', descripcion:'POSAVASO DANTE ROBINO', tipo:'POSAVASO', marca:'DANTE ROBINO'},
+{sku:'10152', descripcion:'MAQUINA DISPENSADORA DE VINO', tipo:'DISPENSER', marca:'DANTE ROBINO'},
+{sku:'10153', descripcion:'FRAPERON NEGRO DANTE ROBINO', tipo:'FRAPERA', marca:'DANTE ROBINO'},
+{sku:'10154', descripcion:'SALIENTE ECO DE LOS ANDES', tipo:'CARTEL', marca:'ECO DE LOS ANDES'},
+{sku:'10155', descripcion:'VASO ECO DE LOS ANDES 330CC X24u', tipo:'VASO', marca:'ECO DE LOS ANDES'},
+{sku:'10156', descripcion:'PIZARRA PARED ECO DE LOS ANDES', tipo:'PIZARRA', marca:'ECO DE LOS ANDES'},
+{sku:'10157', descripcion:'INDIVUDUALES CUERO ECO DE LOS ANDES', tipo:'INDIVIDUALES', marca:'ECO DE LOS ANDES'},
+{sku:'10158', descripcion:'PORTA CUENTA CUERO ECO DE LOS ANDES', tipo:'PORTA CUENTAS', marca:'ECO DE LOS ANDES'},
+{sku:'10159', descripcion:'PORTA MENU CUERO ECO DE LOS ANDES', tipo:'PORTA MENU', marca:'ECO DE LOS ANDES'},
+{sku:'10160', descripcion:'', tipo:'', marca:''},
+{sku:'10161', descripcion:'', tipo:'', marca:''},
+{sku:'10162', descripcion:'COLCHONETA GATORADE', tipo:'COLCHONETA', marca:'GATORADE'},
+{sku:'10163', descripcion:'CARAMAÑOLA GATORADE VERDE', tipo:'CARAMAÑOLA', marca:'GATORADE'},
+{sku:'10164', descripcion:'CORPOREO GATORADE', tipo:'CARTEL', marca:'GATORADE'},
+{sku:'10165', descripcion:'CARAMAÑOLA GATORADE NEGRA ALUMINIO', tipo:'CARAMAÑOLA', marca:'GATORADE'},
+{sku:'10166', descripcion:'VINILO GATORADE ALARGADO GRIS', tipo:'PLOTER', marca:'GATORADE'},
+{sku:'10167', descripcion:'VINILO GATORADE LOGO "G"', tipo:'PLOTER', marca:'GATORADE'},
+{sku:'10168', descripcion:'CORPOREO POLIFAN GATORADE', tipo:'CARTEL', marca:'GATORADE'},
+{sku:'10169', descripcion:'VASO GOOSE ISLAND 500CC X12u', tipo:'VASO', marca:'GOOSE ISLAND'},
+{sku:'10170', descripcion:'BEERMAT GOOSE ISLAND', tipo:'BEERMAT', marca:'GOOSE ISLAND'},
+{sku:'10171', descripcion:'PIZARRA PIE GOOSE ISLAND', tipo:'PIZARRA', marca:'GOOSE ISLAND'},
+{sku:'10172', descripcion:'SALIENTE CON LUZ GOOSE ISLAND', tipo:'CARTEL', marca:'GOOSE ISLAND'},
+{sku:'10173', descripcion:'BACKLIGHT GOOSE ISLAND NEON LED', tipo:'CARTEL', marca:'GOOSE ISLAND'},
+{sku:'10174', descripcion:'FRAPERA GOOSE ISLAND', tipo:'FRAPERA', marca:'GOOSE ISLAND'},
+{sku:'10175', descripcion:'PIZARRA PIE GOOSE ISLAND DIGITAL COUPONS', tipo:'PIZARRA', marca:'GOOSE ISLAND'},
+{sku:'10176', descripcion:'ECO VASO H2O CAJA X 250U.', tipo:'ECO VASO', marca:'H20'},
+{sku:'10177', descripcion:'BACKLIGHT H2O LED', tipo:'CARTEL', marca:'H20'},
+{sku:'10178', descripcion:'MEDALLÓN H2O SIN LUZ', tipo:'CARTEL', marca:'H20'},
+{sku:'10179', descripcion:'PIZARRA PIE H2O', tipo:'PIZARRA', marca:'H20'},
+{sku:'10180', descripcion:'PIZARRA PIE HOEGAARDEN', tipo:'PIZARRA', marca:'HOEGAARDEN'},
+{sku:'10181', descripcion:'BACKLIGHT HOEGAARDEN', tipo:'CARTEL', marca:'HOEGAARDEN'},
+{sku:'10182', descripcion:'VASO HOOEGARDEN 500cc X6u', tipo:'VASO', marca:'HOEGAARDEN'},
+{sku:'10183', descripcion:'', tipo:'', marca:''},
+{sku:'10184', descripcion:'', tipo:'', marca:''},
+{sku:'10185', descripcion:'VASO MICHELOB X 24', tipo:'VASO', marca:'MICHELOB'},
+{sku:'10186', descripcion:'CARTEL MICHELOB LED', tipo:'CARTEL', marca:'MICHELOB'},
+{sku:'10187', descripcion:'PIZARRA PIE MICHELOB', tipo:'PIZARRA', marca:'MICHELOB'},
+{sku:'10188', descripcion:'FRAPERAS MICHELOB ULTRA', tipo:'FRAPERA', marca:'MICHELOB'},
+{sku:'10189', descripcion:'PIZARRA PIE MIKE´S', tipo:'PIZARRA', marca:'MIKE\'S'},
+{sku:'10190', descripcion:'FRAPERA MIKE´S METAL AMARILLA', tipo:'FRAPERA', marca:'MIKE\'S'},
+{sku:'10191', descripcion:'BACKLIGHT LED MIKE´S', tipo:'CARTEL', marca:'MIKE\'S'},
+{sku:'10192', descripcion:'COPA PASO DE LOS TOROS X6', tipo:'COPA', marca:'PASO DE LOS TOROS'},
+{sku:'10193', descripcion:'BEERMAT PASO DE LOS TOROS', tipo:'BEERMAT', marca:'PASO DE LOS TOROS'},
+{sku:'10194', descripcion:'FRAPERA PASO DE LOS TOROS', tipo:'FRAPERA', marca:'PASO DE LOS TOROS'},
+{sku:'10195', descripcion:'COPA PATAGONIA TULIPA 500CC X6u', tipo:'COPA', marca:'PATAGONIA'},
+{sku:'10196', descripcion:'ECO VASO PLASTICO PATAGONIA 500CC', tipo:'VASO', marca:'PATAGONIA'},
+{sku:'10197', descripcion:'VASO PATAGONIA 330CC X6u', tipo:'VASO', marca:'PATAGONIA'},
+{sku:'10198', descripcion:'VASO PATAGONIA 500CC X6u', tipo:'VASO', marca:'PATAGONIA'},
+{sku:'10199', descripcion:'BEERMAT PATAGONIA VERDE', tipo:'BEERMAT', marca:'PATAGONIA'},
+{sku:'10200', descripcion:'PIZARRA PARED PATAGONIA', tipo:'PIZARRA', marca:'PATAGONIA'},
+{sku:'10201', descripcion:'PIZARRA PIE PATAGONIA', tipo:'PIZARRA', marca:'PATAGONIA'},
+{sku:'10202', descripcion:'TABLA PATAGONIA MADERA', tipo:'TABLA', marca:'PATAGONIA'},
+{sku:'10203', descripcion:'CORPOREO PATAGONIA BOMBITA', tipo:'CARTEL', marca:'PATAGONIA'},
+{sku:'10204', descripcion:'BACKLIGHT PATAGONIA', tipo:'CARTEL', marca:'PATAGONIA'},
+{sku:'10205', descripcion:'SALIENTE PATAGONIA LED', tipo:'CARTEL', marca:'PATAGONIA'},
+{sku:'10206', descripcion:'CARTEL PATAGONIA MADERA Y CHAPA LED GRANDE', tipo:'CARTEL', marca:'PATAGONIA'},
+{sku:'10207', descripcion:'SALIENTE PATAGONIA PERSONALIZADO', tipo:'CARTEL', marca:'PATAGONIA'},
+{sku:'10208', descripcion:'TABLETENT MADERA PATAGONIA', tipo:'TABLETENT', marca:'PATAGONIA'},
+{sku:'10209', descripcion:'DESTAPADOR PATAGONIA MADERA', tipo:'DESTAPADOR', marca:'PATAGONIA'},
+{sku:'10210', descripcion:'MANTA TELA PATAGONIA', tipo:'MANTA', marca:'PATAGONIA'},
+{sku:'10211', descripcion:'FOGONERO PATAGONIA METAL', tipo:'FOGONEROS', marca:'PATAGONIA'},
+{sku:'10212', descripcion:'DELANTAL PATAGONIA', tipo:'DELANTAL', marca:'PATAGONIA'},
+{sku:'10213', descripcion:'ASAPARRI PATAGONIA', tipo:'PARRILA', marca:'PATAGONIA'},
+{sku:'10214', descripcion:'POSAVASO PATAGONIA', tipo:'POSAVASO', marca:'PATAGONIA'},
+{sku:'10215', descripcion:'CORPOREO POLIFAN PATAGONIA', tipo:'CARTEL', marca:'PATAGONIA'},
+{sku:'10216', descripcion:'SERVILLETERO DIVISOR PATAGONIA', tipo:'SERVILLETERO', marca:'PATAGONIA'},
+{sku:'10217', descripcion:'CARTEL MADERA PATAGONIA ALTO IMPACTO S/LUZ', tipo:'CARTEL', marca:'PATAGONIA'},
+{sku:'10218', descripcion:'TEBLETENT DIGITAL COUPONSPATAGONIA', tipo:'TABLETENT', marca:'PATAGONIA'},
+{sku:'10219', descripcion:'TABLETENT SERVILLETERO PATAGONIA', tipo:'TABLETENT/SERVILLETERO', marca:'PATAGONIA'},
+{sku:'10220', descripcion:'PIZARRA PIE PATAGONIA DIGITAL COUPONS', tipo:'PIZARRA', marca:'PATAGONIA'},
+{sku:'10221', descripcion:'TABLA METAL PEPSI BLACK', tipo:'TABLA', marca:'PEPSI'},
+{sku:'10222', descripcion:'DELANTAL PEPSI BLACK', tipo:'FALDONES', marca:'PEPSI'},
+{sku:'10223', descripcion:'ECO VASO PEPSI BLACK 500CC', tipo:'VASO', marca:'PEPSI'},
+{sku:'10224', descripcion:'BOTINERO PEPSI', tipo:'BOTINERO', marca:'PEPSI'},
+{sku:'10225', descripcion:'VASO PEPSI PERFECT X10', tipo:'VASO', marca:'PEPSI'},
+{sku:'10226', descripcion:'CAJA VASO POLIPAPEL x1200u', tipo:'VASO', marca:'PEPSI'},
+{sku:'10227', descripcion:'SALIENTE PEPSI BLACK CHICO', tipo:'CARTEL', marca:'PEPSI'},
+{sku:'10228', descripcion:'SALIENTE PEPSI TITAN', tipo:'CARTEL', marca:'PEPSI'},
+{sku:'10229', descripcion:'BACKLIGHT NEON PEPSI MUSIC INTERIOR', tipo:'CARTEL', marca:'PEPSI'},
+{sku:'10230', descripcion:'VASO QUILMES CHOPP 500CC X6u', tipo:'VASO', marca:'QUILMES'},
+{sku:'10231', descripcion:'ECO VASO QUILMES 500CC', tipo:'VASO', marca:'QUILMES'},
+{sku:'10232', descripcion:'VASO QUILMES MURPHY 300CC X12u', tipo:'VASO', marca:'QUILMES'},
+{sku:'10233', descripcion:'VASO QUILMES CHOPP 400CC X6u', tipo:'VASO', marca:'QUILMES'},
+{sku:'10234', descripcion:'VASO QUILMES MURPHY 500CC X6u', tipo:'VASO', marca:'QUILMES'},
+{sku:'10235', descripcion:'VASO QUILMES MUNDIAL 300CC X9u', tipo:'VASO', marca:'QUILMES'},
+{sku:'10236', descripcion:'BEERMAT QUILMES GRANDE', tipo:'BEERMAT', marca:'QUILMES'},
+{sku:'10237', descripcion:'BEERMAT QUILMES AZUL ELECTRICO / SERVIDO', tipo:'BEERMAT', marca:'QUILMES'},
+{sku:'10238', descripcion:'PIZARRA QUILMES PIE MENU DEL DIA', tipo:'PIZARRA', marca:'QUILMES'},
+{sku:'10239', descripcion:'PIZARRA PARED AZUL QUILMES', tipo:'PIZARRA', marca:'QUILMES'},
+{sku:'10240', descripcion:'PIZARRA QUILMES PARED MENU DEL DIA', tipo:'PIZARRA', marca:'QUILMES'},
+{sku:'10241', descripcion:'PIZARRA RITUAL CHOPP QUILMES', tipo:'PIZARRA', marca:'QUILMES'},
+{sku:'10242', descripcion:'PIZARRA RITUAL BARRA QUILMES', tipo:'PIZARRA', marca:'QUILMES'},
+{sku:'10243', descripcion:'FRAPERA QUILMES AZUL', tipo:'FRAPERA', marca:'QUILMES'},
+{sku:'10244', descripcion:'GLORIFICADOR MADERA QUILMES', tipo:'GLORIFICADOR', marca:'QUILMES'},
+{sku:'10245', descripcion:'BANDEJA QUILMES CHOPP', tipo:'BANDEJA', marca:'QUILMES'},
+{sku:'10246', descripcion:'CARRY CHOP QUILMES X2u', tipo:'CARRY CHOPP', marca:'QUILMES'},
+{sku:'10247', descripcion:'SERVILLETERO DIVISOR QUILMES', tipo:'SERVILLETERO', marca:'QUILMES'},
+{sku:'10248', descripcion:'POLIFAN QUILMES CORPOREO', tipo:'CARTEL', marca:'QUILMES'},
+{sku:'10249', descripcion:'PLATO MANI QUILMES', tipo:'PLATO', marca:'QUILMES'},
+{sku:'10250', descripcion:'BACKLIGHT QUILMES MEDALLON', tipo:'CARTEL', marca:'QUILMES'},
+{sku:'10251', descripcion:'MEDALLON MDF QUILMES', tipo:'CARTEL', marca:'QUILMES'},
+{sku:'10252', descripcion:'CORPOREO QUILMES 3D EXTERIOR', tipo:'CARTEL', marca:'QUILMES'},
+{sku:'10253', descripcion:'CORPOREO QUILMES ACRILICO O MADERA INTERIOR', tipo:'CARTEL', marca:'QUILMES'},
+{sku:'10254', descripcion:'CORPOREO ESPEJADO QUILMES', tipo:'CARTEL', marca:'QUILMES'},
+{sku:'10255', descripcion:'HELATODO QUILMES', tipo:'COOLER', marca:'QUILMES'},
+{sku:'10256', descripcion:'CUADRO RETRO QUILMES VARIOS', tipo:'CARTEL', marca:'QUILMES'},
+{sku:'10257', descripcion:'CHAPON RETRO QUILMES VARIOS', tipo:'CARTEL', marca:'QUILMES'},
+{sku:'10258', descripcion:'CARTEL CERAMICA QUILMES', tipo:'CARTEL', marca:'QUILMES'},
+{sku:'10259', descripcion:'SALIENTE QUILMES CHOPP', tipo:'CARTEL', marca:'QUILMES'},
+{sku:'10260', descripcion:'DESTAPADOR QUILMES', tipo:'DESTAPADOR', marca:'QUILMES'},
+{sku:'10261', descripcion:'POSAVASO QUILMES', tipo:'POSAVASO', marca:'QUILMES'},
+{sku:'10262', descripcion:'KIT FUTBOL QUILMES (LONA Y PECHERAS)', tipo:'KIT', marca:'QUILMES'},
+{sku:'10263', descripcion:'BANDERA QUILMES BLANCA / AZUL', tipo:'BANDERA', marca:'QUILMES'},
+{sku:'10264', descripcion:'TABLETENT QUILMES MUNDIAL MILANESA', tipo:'TABLETENT', marca:'QUILMES'},
+{sku:'10265', descripcion:'TABLETENT QUILMES MADERA GENERICO', tipo:'TABLETENT', marca:'QUILMES'},
+{sku:'10266', descripcion:'COPA QUILMES DOBLE MALTA 500CC X24u', tipo:'COPA', marca:'QUILMES'},
+{sku:'10267', descripcion:'DELANTAL QUILMES JEAN', tipo:'DELANTAL', marca:'QUILMES'},
+{sku:'10268', descripcion:'SALIENTE QUILMES LED 2022', tipo:'CARTEL', marca:'QUILMES'},
+{sku:'10269', descripcion:'CORPOREO QUILMES LED EXTERIOR 2022', tipo:'CARTEL', marca:'QUILMES'},
+{sku:'10270', descripcion:'TEBLETENT DIGITAL COUPONSQUILMES', tipo:'TABLETENT', marca:'QUILMES'},
+{sku:'10271', descripcion:'VASO QUILMES MURPHY X6 330CC RIVER PLATE', tipo:'VASO', marca:'QUILMES'},
+{sku:'10272', descripcion:'BEERMAT QUILMES CHICO', tipo:'BEERMAT', marca:'QUILMES'},
+{sku:'10273', descripcion:'TABLETENT SERVILLETERO QUILMES', tipo:'TABLETENT/SERVILLETERO', marca:'QUILMES'},
+{sku:'10274', descripcion:'CUADRO QUILMES MUSICA FAMILIA X 5', tipo:'CARTEL', marca:'QUILMES'},
+{sku:'10275', descripcion:'PIZARRA PIE QUILMES DIGITAL COUPONS', tipo:'PIZARRA', marca:'QUILMES'},
+{sku:'10276', descripcion:'GORRA QUILMES 0.0%', tipo:'GORRA', marca:'QUILMES'},
+{sku:'10277', descripcion:'PECHERA QUILMES 0.0%', tipo:'PECHERA', marca:'QUILMES'},
+{sku:'10278', descripcion:'BANDEJA QUILMES ESTADIOS', tipo:'BANDEJA', marca:'QUILMES'},
+{sku:'10279', descripcion:'TABLA SURF RIDER', tipo:'TABLA', marca:'RIDER'},
+{sku:'10280', descripcion:'CORPOREO RIDER NEON 2022', tipo:'CARTEL', marca:'RIDER'},
+{sku:'10281', descripcion:'ECO VASO RIDER', tipo:'VASO', marca:'RIDER'},
+{sku:'10282', descripcion:'FRAPERA SPRITZER', tipo:'FRAPERA', marca:'SPRITZER'},
+{sku:'10283', descripcion:'CARTEL OXIDO CIRCULAR STELLA ARTOIS', tipo:'CARTEL', marca:'STELLA ARTOIS'},
+{sku:'10284', descripcion:'ECO VASO STELLA ARTOIS 500CC', tipo:'VASO', marca:'STELLA ARTOIS'},
+{sku:'10285', descripcion:'CARTEL HORIZONTAL STELLA ARTOIS', tipo:'CARTEL', marca:'STELLA ARTOIS'},
+{sku:'10286', descripcion:'COPA STELLA ARTOIS 330CC X6u', tipo:'COPA', marca:'STELLA ARTOIS'},
+{sku:'10287', descripcion:'COPA STELLA ARTOIS 500CC X6u', tipo:'COPA', marca:'STELLA ARTOIS'},
+{sku:'10288', descripcion:'DAGA STELLA ARTOIS GRIS', tipo:'DAGA', marca:'STELLA ARTOIS'},
+{sku:'10289', descripcion:'DAGA STELLA ARTOIS BLANCA', tipo:'DAGA', marca:'STELLA ARTOIS'},
+{sku:'10290', descripcion:'FRAPERA STELLA ARTOIS BLANCA CUADRADA', tipo:'FRAPERA', marca:'STELLA ARTOIS'},
+{sku:'10291', descripcion:'FRAPERA STELLA ARTOIS BLANCA OVALADA', tipo:'FRAPERA', marca:'STELLA ARTOIS'},
+{sku:'10292', descripcion:'BACKLIGHT "STELLA ARTOIS BLANCHE" LOGO 2022 NEON', tipo:'CARTEL', marca:'STELLA ARTOIS'},
+{sku:'10293', descripcion:'COPERO STELLA', tipo:'COPERO', marca:'STELLA ARTOIS'},
+{sku:'10294', descripcion:'PIZARRA STELLA QR PIE', tipo:'PIZARRA', marca:'STELLA ARTOIS'},
+{sku:'10295', descripcion:'PIZARRA STELLA ARTOIS PIE', tipo:'PIZARRA', marca:'STELLA ARTOIS'},
+{sku:'10296', descripcion:'PIZARRA STELLA ARTOIS PARED', tipo:'PIZARRA', marca:'STELLA ARTOIS'},
+{sku:'10297', descripcion:'BANDEJA STELLA CHOPP', tipo:'BANDEJA', marca:'STELLA ARTOIS'},
+{sku:'10298', descripcion:'POSAVASO STELLA ARTOIS', tipo:'POSAVASO', marca:'STELLA ARTOIS'},
+{sku:'10299', descripcion:'BEERMAT STELLA ARTOIS', tipo:'BEERMAT', marca:'STELLA ARTOIS'},
+{sku:'10300', descripcion:'TABLETENT STELLA ARTOIS BLANCO', tipo:'TABLETENT', marca:'STELLA ARTOIS'},
+{sku:'10301', descripcion:'TABLA STELLA MESA COMPARTIDA', tipo:'TABLA PICADA', marca:'STELLA ARTOIS'},
+{sku:'10302', descripcion:'PIZZERA STELLA ARTOIS MADERA', tipo:'TABLA PIZZA', marca:'STELLA ARTOIS'},
+{sku:'10303', descripcion:'PANERAS STELLA MADERA', tipo:'PANERAS', marca:'STELLA ARTOIS'},
+{sku:'10304', descripcion:'GUIRNALDAS CON LUZ STELLA', tipo:'GUIRNALDAS', marca:'STELLA ARTOIS'},
+{sku:'10305', descripcion:'PORTA DAGA STELLA BLANCO', tipo:'PORTA DAGA', marca:'STELLA ARTOIS'},
+{sku:'10306', descripcion:'DESTAPADOR STELLA GRIS', tipo:'DESTAPADOR', marca:'STELLA ARTOIS'},
+{sku:'10307', descripcion:'CORPOREO STELLA ARTOIS 3D LED', tipo:'CARTEL', marca:'STELLA ARTOIS'},
+{sku:'10308', descripcion:'MANTA STELLA ARTOIS', tipo:'MANTA', marca:'STELLA ARTOIS'},
+{sku:'10309', descripcion:'DELANTAL STELLA ARTOIS BLANCO', tipo:'DELANTAL', marca:'STELLA ARTOIS'},
+{sku:'10310', descripcion:'DESTAPADOR STELLA ARTOIS BLANCO', tipo:'DESTAPADOR', marca:'STELLA ARTOIS'},
+{sku:'10311', descripcion:'SERVILLETERO DIVISOR STELLA ARTOIS METAL', tipo:'SERVILLETERO', marca:'STELLA ARTOIS'},
+{sku:'10312', descripcion:'BACKLIGHT "STELLA ARTOIS" VINTAGE NEON 2022', tipo:'CARTEL', marca:'STELLA ARTOIS'},
+{sku:'10313', descripcion:'BACKLIGHT ESTRELLA ROJA "STELLA ARTOIS" NEON 2022', tipo:'CARTEL', marca:'STELLA ARTOIS'},
+{sku:'10314', descripcion:'SALIENTE STELLA ARTOIS EXTERIOR', tipo:'CARTEL', marca:'STELLA ARTOIS'},
+{sku:'10315', descripcion:'CORPOREO POLIFAN STELLA ARTOIS', tipo:'CARTEL', marca:'STELLA ARTOIS'},
+{sku:'10316', descripcion:'TEBLETENT DIGITAL COUPONSSTELLA ARTOIS', tipo:'TABLETENT', marca:'STELLA ARTOIS'},
+{sku:'10317', descripcion:'CARTEL REDONDO NEON NARANJA STELLA ARTOIS', tipo:'CARTEL', marca:'STELLA ARTOIS'},
+{sku:'10318', descripcion:'TABLETENT SERVILLETERO STELLA ARTOIS', tipo:'TABLETENT/SERVILLETERO', marca:'STELLA ARTOIS'},
+{sku:'10319', descripcion:'PIZARRA PIE STELLA ARTOIS DIGITAL COUPONS', tipo:'PIZARRA', marca:'STELLA ARTOIS'},
+{sku:'10320', descripcion:'PLACA STELLA PERFECT SERVE ON', tipo:'CARTEL', marca:'STELLA ARTOIS'},
+{sku:'10321', descripcion:'CARTEL STELLA ARTOIS ESPEJADO RECTANGULAR LED', tipo:'CARTEL', marca:'STELLA ARTOIS'},
+{sku:'10322', descripcion:'CORPÓREO STELLA ARTOIS ACRILICO NEON LED ROJO CHICO', tipo:'CARTEL', marca:'STELLA ARTOIS'},
+{sku:'10323', descripcion:'VASO TEMPLE 500CC X6u', tipo:'VASO', marca:'TEMPLE'},
+{sku:'10324', descripcion:'PIZARRA PARED TEMPLE', tipo:'PIZARRA', marca:'TEMPLE'},
+{sku:'10325', descripcion:'BEERMAT TEMPLE', tipo:'BEERMAT', marca:'TEMPLE'},
+{sku:'10326', descripcion:'BACKLIGHT TEMPLE LOGO NEON 2022', tipo:'CARTEL', marca:'TEMPLE'},
+{sku:'10327', descripcion:'FRAPERA TEMPLE', tipo:'FRAPERA', marca:'TEMPLE'},
+{sku:'10328', descripcion:'CARTEL EXHIBICION PEPSI CON SOPORTE', tipo:'CARTEL', marca:'PEPSI'},
+{sku:'10329', descripcion:'CORPOREO CORONA CAJON METAL 3MTS', tipo:'CARTEL', marca:'CORONA'},
+{sku:'10330', descripcion:'CORPOREO CORONA MADERA 3MTS', tipo:'CARTEL', marca:'CORONA'},
+{sku:'10331', descripcion:'CORPOREO QUILMES ESPEJADO LED', tipo:'CARTEL', marca:'QUILMES'},
+{sku:'10332', descripcion:'CARTEL QUILMES BOTELLA ESPEJADO LED', tipo:'CARTEL', marca:'QUILMES'},
+{sku:'10333', descripcion:'CARTEL ACRILICO LED ANDES ORIGEN', tipo:'CARTEL', marca:'ANDES ORIGEN'},
+{sku:'10334', descripcion:'CORPOREO PATAGONIA CAJON LED BLANCO', tipo:'CARTEL', marca:'PATAGONIA'},
+{sku:'10335', descripcion:'POSAVASO MADERA CORONA', tipo:'POSAVASO', marca:'CORONA'}
+];
+    const PROXY_URL = "/.netlify/functions/appscript-proxy";
+
+    // Declarados acá arriba (y no más abajo, donde vive el resto de la lógica de Stock)
+    // porque el autocompletado de SKU del Remito los necesita desde el primer renglón,
+    // que se crea apenas carga la página.
+    let stockData = [];
+    let stockCacheLoaded = false;
+    let _stockLoading = null;
+
+    const tbody = document.getElementById('tbody');
+    const totalQtyEl = document.getElementById('totalQty');
+    const msg = document.getElementById('msg');
+    const fechaEl = document.getElementById('fecha');
+    const puntoEl = document.getElementById('punto');
+    const usuarioEl = document.getElementById('usuario');
+    const usuarioSelectEl = document.getElementById('usuarioSelect');
+    const obsEl = document.getElementById('obs');
+
+    fechaEl.value = new Date().toISOString().slice(0,10);
+
+    function resetUsuarioField(){
+      usuarioSelectEl.value = '';
+      usuarioEl.value = '';
+      usuarioEl.style.display = 'none';
+    }
+    usuarioSelectEl.addEventListener('change', () => {
+      if (usuarioSelectEl.value === '__otro__') {
+        usuarioEl.style.display = 'block';
+        usuarioEl.value = '';
+        usuarioEl.focus();
+      } else {
+        usuarioEl.style.display = 'none';
+        usuarioEl.value = usuarioSelectEl.value;
+      }
+    });
+
+    /**
+     * Lista de productos para autocompletar/validar el SKU en el Remito.
+     * Usa el stock real (en vivo desde el Sheet) apenas está disponible —así
+     * aparecen los productos que acabás de dar de alta— y mientras tanto,
+     * o si algo falla, cae en la lista estática PRODUCTS como respaldo.
+     */
+    function getProductList(){
+      if (stockCacheLoaded && stockData.length) {
+        const bySku = new Map();
+        PRODUCTS.forEach(p => bySku.set(String(p.sku), p));
+        stockData.forEach(r => bySku.set(String(r.sku), { sku: r.sku, descripcion: r.descripcion, tipo: r.tipo, marca: r.marca }));
+        return Array.from(bySku.values());
+      }
+      return PRODUCTS;
+    }
+
+    function skuDatalistOptionsHtml(){
+      return getProductList().map(p => `<option value="${p.sku}">${p.descripcion}</option>`).join('');
+    }
+
+    function refreshAllSkuDatalists(){
+      const html = skuDatalistOptionsHtml();
+      document.querySelectorAll('datalist.sku-datalist').forEach(dl => { dl.innerHTML = html; });
+    }
+
+    function createSkuInput(){
+      const id = 'dl_' + Math.random().toString(36).slice(2);
+      const wrap = document.createElement('div');
+      const input = document.createElement('input');
+      input.setAttribute('list', id);
+      input.className = 'skuInput';
+      input.placeholder = 'Escribí el código...';
+      input.autocapitalize = 'off'; input.autocomplete = 'off'; input.inputmode = 'numeric';
+
+      const dl = document.createElement('datalist');
+      dl.id = id;
+      dl.className = 'sku-datalist';
+      dl.innerHTML = skuDatalistOptionsHtml();
+
+      wrap.appendChild(input);
+      wrap.appendChild(dl);
+      return { wrap, input };
+    }
+
+    function findBySku(sku){ return getProductList().find(p => String(p.sku) === String(sku).trim()) || null; }
+
+    function addRow(prefill){
+      const tr = document.createElement('tr');
+      const skuCell = document.createElement('td');
+      const descCell = document.createElement('td');
+      const tipoCell = document.createElement('td');
+      const marcaCell = document.createElement('td');
+      const qtyCell = document.createElement('td');
+      const delCell = document.createElement('td');
+
+      const { wrap, input } = createSkuInput();
+      skuCell.appendChild(wrap);
+
+      const desc = document.createElement('input'); desc.readOnly = true; desc.className='desc';
+      const tipo = document.createElement('input'); tipo.readOnly = true; tipo.className='tipo';
+      const marca = document.createElement('input'); marca.readOnly = true; marca.className='marca';
+      const qty = document.createElement('input'); qty.type='number'; qty.min='1'; qty.value='1'; qty.className='qty';
+
+      descCell.appendChild(desc); tipoCell.appendChild(tipo); marcaCell.appendChild(marca); qtyCell.appendChild(qty);
+
+      const del = document.createElement('button'); del.textContent='Quitar'; del.className='btn btn-danger'; del.style.width='100%';
+      delCell.appendChild(del);
+
+      tr.appendChild(skuCell); tr.appendChild(descCell); tr.appendChild(tipoCell); tr.appendChild(marcaCell); tr.appendChild(qtyCell); tr.appendChild(delCell);
+      tbody.appendChild(tr);
+
+      function hydrate(){ const p = findBySku(input.value); if (p) { desc.value=p.descripcion||''; tipo.value=p.tipo||''; marca.value=p.marca||''; } else { desc.value = tipo.value = marca.value = ''; } }
+      input.addEventListener('change', hydrate);
+      input.addEventListener('blur', hydrate);
+      del.onclick = (e)=>{ e.preventDefault(); tr.remove(); computeTotal(); };
+      qty.addEventListener('input', computeTotal);
+
+      if (prefill && prefill.sku) { input.value = prefill.sku; hydrate(); if (prefill.cantidad) qty.value = prefill.cantidad; }
+      computeTotal();
+    }
+
+    function computeTotal(){
+      let total = 0;
+      tbody.querySelectorAll('.qty').forEach(c => { const v = Number(c.value||'0'); if (!isNaN(v)) total += v; });
+      totalQtyEl.textContent = total;
+    }
+
+    document.getElementById('addLine').onclick = (e)=>{ e.preventDefault(); addRow(); };
+    document.getElementById('clearLines').onclick = (e)=>{ e.preventDefault(); tbody.innerHTML=''; computeTotal(); };
+    addRow();
+
+    async function submit(){
+      msg.textContent=''; msg.className='';
+
+      const lines = Array.from(tbody.querySelectorAll('tr')).map(tr => {
+        const sku = tr.querySelector('.skuInput').value.trim();
+        const product = findBySku(sku);
+        const desc = tr.querySelector('.desc').value;
+        const tipo = tr.querySelector('.tipo').value;
+        const marca = tr.querySelector('.marca').value;
+        const cantidad = Number(tr.querySelector('.qty').value||'0');
+        return { sku, descripcion: product?product.descripcion:desc, tipo: product?product.tipo:tipo, marca: product?product.marca:marca, cantidad };
+      }).filter(l => l.sku && l.cantidad>0);
+
+      if (!fechaEl.value || !puntoEl.value.trim() || lines.length===0){ msg.textContent='Completá fecha, punto y al menos un ítem con cantidad.'; msg.className='err'; return; }
+
+      try {
+        const form = new URLSearchParams();
+        form.append('header', JSON.stringify({ fecha: fechaEl.value, punto_venta: puntoEl.value.trim(), usuario: usuarioEl.value.trim(), obs: obsEl.value.trim() }));
+        form.append('lines', JSON.stringify(lines));
+
+        const res = await fetch(PROXY_URL, { method:'POST', body: form });
+        const json = await res.json();
+        if (!json.ok) { msg.textContent='❌ ' + (json.error||'Error'); if (json.detalle) msg.textContent += ' | ' + json.detalle.map(d=>d.sku+': '+d.error).join('; '); msg.className='err'; return; }
+
+        msg.textContent='✅ Remito ' + json.nroRemito + ' registrado. Ítems: ' + lines.length; msg.className='ok';
+
+        if (window.jspdf) {
+          const { jsPDF } = window.jspdf; const doc = new jsPDF(); let y=10;
+          doc.setFontSize(14); doc.text('Remito ' + json.nroRemito,10,y); y+=8;
+          doc.setFontSize(10);
+          doc.text('Fecha: ' + fechaEl.value,10,y); y+=6;
+          doc.text('Punto de venta: ' + puntoEl.value.trim(),10,y); y+=6;
+          doc.text('Usuario: ' + (usuarioEl.value.trim()||'-'),10,y); y+=6;
+          doc.text('Observaciones: ' + (obsEl.value.trim()||'-'),10,y); y+=8;
+          doc.text('Detalle:',10,y); y+=6; doc.setFont('courier','normal'); doc.text('SKU        Cant  | Descripción',10,y); y+=6;
+          lines.forEach(l=>{ const line = (String(l.sku)+'          ').slice(0,10) + ' ' + (String(l.cantidad)+'    ').slice(0,4) + ' | ' + (l.descripcion||''); doc.text(line,10,y); y+=6; if (y>280){ doc.addPage(); y=10; } });
+          doc.save('Remito_' + json.nroRemito + '.pdf');
+        }
+
+        puntoEl.value=''; resetUsuarioField(); obsEl.value=''; tbody.innerHTML=''; addRow(); computeTotal();
+      } catch (err) { msg.textContent='❌ Error de red: ' + err.message; msg.className='err'; }
+    }
+
+    document.getElementById('submitBtn').onclick = submit;
+
+    /* =========================================================
+     * NAV DE PESTAÑAS
+     * ========================================================= */
+    function _debounce(fn, ms){ let t; return function(...args){ clearTimeout(t); t=setTimeout(()=>fn.apply(this,args), ms); }; }
+
+    const tabButtons = document.querySelectorAll('nav.tabs button');
+    const pages = { 'pg-remito': null, 'pg-stock': null, 'pg-alta': null, 'pg-catalogo': null, 'pg-alertas': null, 'pg-historial': null };
+    Object.keys(pages).forEach(id => pages[id] = document.getElementById(id));
+
+    let histLoadedOnce = false;
+
+    tabButtons.forEach(btn => {
+      btn.addEventListener('click', () => {
+        const target = btn.getAttribute('data-page');
+        tabButtons.forEach(b => { b.removeAttribute('aria-current'); });
+        btn.setAttribute('aria-current','page');
+        Object.entries(pages).forEach(([id, el]) => el.classList.toggle('active', id === target));
+
+        if (target === 'pg-stock') {
+          document.getElementById('stockBody').innerHTML = document.getElementById('stockBody').innerHTML || '<tr><td colspan="8" class="muted">Cargando...</td></tr>';
+          ensureStockLoaded().then(() => { fillStockFilterOptions(); renderStockTable(); })
+            .catch(err => { document.getElementById('stockBody').innerHTML = '<tr><td colspan="8" class="err">Error: ' + err.message + '</td></tr>'; });
+        }
+        if (target === 'pg-catalogo') {
+          ensureStockLoaded().then(() => { fillCatalogoFilterOptions(); renderCatalogo(); })
+            .catch(err => { document.getElementById('catalogoGrid').innerHTML = '<div class="err">Error: ' + err.message + '</div>'; });
+        }
+        if (target === 'pg-alta') {
+          ensureStockLoaded().catch(() => {}); // best-effort, se usa solo para la búsqueda de SKU
+        }
+        if (target === 'pg-alertas') {
+          ensureStockLoaded().then(renderAlertas)
+            .catch(err => { document.getElementById('alertasBody').innerHTML = '<tr><td colspan="6" class="err">Error: ' + err.message + '</td></tr>'; });
+        }
+        if (target === 'pg-historial' && !histLoadedOnce) { histLoadedOnce = true; loadHistorial(); }
+      });
+    });
+
+    /* =========================================================
+     * IMÁGENES: compresión client-side antes de subir
+     * ========================================================= */
+    /**
+     * Normaliza cualquier URL de Google Drive (uc?export=view, /file/d/.../view,
+     * thumbnail?id=..., etc.) al endpoint de thumbnail, que es el que Drive
+     * soporta de forma confiable para insertar directo en <img>. Así se arreglan
+     * también fotos guardadas antes de este fix, sin tener que resubirlas.
+     */
+    function driveThumbUrl(url, size){
+      if (!url) return '';
+      size = size || 500;
+      const m = String(url).match(/[-\w]{25,}/);
+      if (!m) return url;
+      return 'https://drive.google.com/thumbnail?id=' + m[0] + '&sz=w' + size;
+    }
+
+    function fileToCompressedBase64(file, maxDim, quality){
+      maxDim = maxDim || 900; quality = quality || 0.75;
+      return new Promise((resolve, reject) => {
+        const reader = new FileReader();
+        reader.onerror = () => reject(new Error('No se pudo leer el archivo'));
+        reader.onload = () => {
+          const img = new Image();
+          img.onerror = () => reject(new Error('No se pudo leer la imagen'));
+          img.onload = () => {
+            let w = img.width, h = img.height;
+            if (w > maxDim || h > maxDim) {
+              const scale = Math.min(maxDim / w, maxDim / h);
+              w = Math.round(w * scale); h = Math.round(h * scale);
+            }
+            const canvas = document.createElement('canvas');
+            canvas.width = w; canvas.height = h;
+            canvas.getContext('2d').drawImage(img, 0, 0, w, h);
+            resolve(canvas.toDataURL('image/jpeg', quality));
+          };
+          img.src = reader.result;
+        };
+        reader.readAsDataURL(file);
+      });
+    }
+
+    /* =========================================================
+     * STOCK EN TIEMPO REAL (cache compartida con Catálogo, Alta y Remito)
+     * ========================================================= */
+    function ensureStockLoaded(force){
+      if (stockCacheLoaded && !force) return Promise.resolve();
+      if (_stockLoading) return _stockLoading;
+      _stockLoading = fetch(PROXY_URL + '?action=stock')
+        .then(res => res.json())
+        .then(json => {
+          if (!json.ok) throw new Error(json.error || 'Error desconocido');
+          stockData = json.rows || [];
+          stockCacheLoaded = true;
+        })
+        .finally(() => { _stockLoading = null; });
+      return _stockLoading;
+    }
+
+    function loadStock(){ ensureStockLoaded(true).then(() => { fillStockFilterOptions(); renderStockTable(); })
+      .catch(err => { document.getElementById('stockBody').innerHTML = '<tr><td colspan="8" class="err">Error: ' + err.message + '</td></tr>'; }); }
+
+    function fillStockFilterOptions(){
+      const tipoSel = document.getElementById('stockTipo');
+      const marcaSel = document.getElementById('stockMarca');
+      const tipos = [...new Set(stockData.map(r => r.tipo).filter(Boolean))].sort();
+      const marcas = [...new Set(stockData.map(r => r.marca).filter(Boolean))].sort();
+      const prevTipo = tipoSel.value, prevMarca = marcaSel.value;
+      tipoSel.innerHTML = '<option value="">Tipo (todos)</option>' + tipos.map(t => `<option value="${t}">${t}</option>`).join('');
+      marcaSel.innerHTML = '<option value="">Marca (todos)</option>' + marcas.map(m => `<option value="${m}">${m}</option>`).join('');
+      tipoSel.value = prevTipo; marcaSel.value = prevMarca;
+    }
+
+    function renderStockTable(){
+      const body = document.getElementById('stockBody');
+      const countEl = document.getElementById('stockCount');
+      const q = document.getElementById('stockSearch').value.trim().toLowerCase();
+      const tipo = document.getElementById('stockTipo').value;
+      const marca = document.getElementById('stockMarca').value;
+      const bajo = document.getElementById('stockBajo').value;
+
+      const filtered = stockData.filter(r => {
+        if (q && !(String(r.sku).toLowerCase().includes(q) || String(r.descripcion).toLowerCase().includes(q))) return false;
+        if (tipo && r.tipo !== tipo) return false;
+        if (marca && r.marca !== marca) return false;
+        if (bajo === 'bajo' && !(r.stockActual > 0 && r.stockActual <= 5)) return false;
+        if (bajo === 'cero' && r.stockActual > 0) return false;
+        return true;
+      });
+
+      if (!filtered.length){ body.innerHTML = '<tr><td colspan="8" class="muted">Sin resultados.</td></tr>'; countEl.textContent = '0 productos'; return; }
+
+      body.innerHTML = filtered.map(r => `
+        <tr>
+          <td>${r.imagenUrl
+            ? `<img src="${driveThumbUrl(r.imagenUrl, 100)}" class="stock-thumb stock-photo-btn" data-sku="${r.sku}" alt="Foto ${r.sku}" title="Click para cambiar la foto" />`
+            : `<button type="button" class="btn btn-ghost stock-photo-btn" data-sku="${r.sku}">+ Foto</button>`}</td>
+          <td>${r.sku}</td>
+          <td>${r.descripcion}</td>
+          <td>${r.tipo}</td>
+          <td>${r.marca}</td>
+          <td style="text-align:right">${r.stockInicial}</td>
+          <td style="text-align:right">${r.entregado}</td>
+          <td style="text-align:right" class="${r.stockActual<=5?'low':''}">${r.stockActual}</td>
+        </tr>
+      `).join('');
+      countEl.textContent = filtered.length + ' de ' + stockData.length + ' productos';
+    }
+
+    document.getElementById('stockSearch').addEventListener('input', _debounce(renderStockTable, 200));
+    document.getElementById('stockTipo').addEventListener('change', renderStockTable);
+    document.getElementById('stockMarca').addEventListener('change', renderStockTable);
+    document.getElementById('stockBajo').addEventListener('change', renderStockTable);
+    document.getElementById('stockRefresh').onclick = (e)=>{ e.preventDefault(); loadStock(); };
+    document.getElementById('stockClearFilters').onclick = (e) => {
+      e.preventDefault();
+      document.getElementById('stockSearch').value = '';
+      document.getElementById('stockTipo').value = '';
+      document.getElementById('stockMarca').value = '';
+      document.getElementById('stockBajo').value = '';
+      renderStockTable();
+    };
+
+    let currentUploadSku = null;
+    document.getElementById('stockBody').addEventListener('click', (e) => {
+      const btn = e.target.closest('.stock-photo-btn');
+      if (!btn) return;
+      currentUploadSku = btn.getAttribute('data-sku');
+      document.getElementById('stockUploadFileHidden').click();
+    });
+    document.getElementById('stockUploadFileHidden').addEventListener('change', async (e) => {
+      const file = e.target.files[0];
+      e.target.value = '';
+      if (!file || !currentUploadSku) return;
+      await subirFotoParaSku(currentUploadSku, file);
+    });
+
+    async function subirFotoParaSku(sku, file){
+      try {
+        const base64 = await fileToCompressedBase64(file);
+        const res = await fetch(PROXY_URL, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ action: 'uploadImagen', sku, imagenBase64: base64, imagenName: sku + '.jpg' })
+        });
+        const json = await res.json();
+        if (!json.ok) { alert('❌ ' + (json.error || 'No se pudo subir la foto')); return; }
+        const row = stockData.find(r => r.sku === sku);
+        if (row) row.imagenUrl = json.imagenUrl;
+        renderStockTable();
+        renderCatalogo();
+      } catch (err) {
+        alert('❌ Error de red: ' + err.message);
+      }
+    }
+
+    /* =========================================================
+     * CATÁLOGO
+     * ========================================================= */
+    function fillCatalogoFilterOptions(){
+      const tipoSel = document.getElementById('catalogoTipo');
+      const marcaSel = document.getElementById('catalogoMarca');
+      const tipos = [...new Set(stockData.map(r => r.tipo).filter(Boolean))].sort();
+      const marcas = [...new Set(stockData.map(r => r.marca).filter(Boolean))].sort();
+      const prevTipo = tipoSel.value, prevMarca = marcaSel.value;
+      tipoSel.innerHTML = '<option value="">Tipo (todos)</option>' + tipos.map(t => `<option value="${t}">${t}</option>`).join('');
+      marcaSel.innerHTML = '<option value="">Marca (todos)</option>' + marcas.map(m => `<option value="${m}">${m}</option>`).join('');
+      tipoSel.value = prevTipo; marcaSel.value = prevMarca;
+    }
+
+    function renderCatalogo(){
+      const grid = document.getElementById('catalogoGrid');
+      const countEl = document.getElementById('catalogoCount');
+      const q = document.getElementById('catalogoSearch').value.trim().toLowerCase();
+      const tipo = document.getElementById('catalogoTipo').value;
+      const marca = document.getElementById('catalogoMarca').value;
+      const conFoto = document.getElementById('catalogoConFoto').value;
+
+      const filtered = stockData.filter(r => {
+        if (q && !(String(r.sku).toLowerCase().includes(q) || String(r.descripcion).toLowerCase().includes(q))) return false;
+        if (tipo && r.tipo !== tipo) return false;
+        if (marca && r.marca !== marca) return false;
+        if (conFoto === 'con' && !r.imagenUrl) return false;
+        if (conFoto === 'sin' && r.imagenUrl) return false;
+        return true;
+      });
+
+      if (!filtered.length){ grid.innerHTML = '<div class="muted">Sin resultados.</div>'; countEl.textContent = '0 productos'; return; }
+
+      grid.innerHTML = filtered.map(r => `
+        <div class="catalog-card" data-sku="${r.sku}">
+          ${r.imagenUrl ? `<img src="${driveThumbUrl(r.imagenUrl, 400)}" class="catalog-thumb" alt="${r.descripcion}" loading="lazy" />` : `<div class="catalog-noimg">📦</div>`}
+          <div class="catalog-body">
+            <div class="catalog-sku">${r.sku}${r.marca ? ' · ' + r.marca : ''}</div>
+            <div class="catalog-desc">${r.descripcion || '(sin descripción)'}</div>
+            <div class="catalog-qty">Cantidad real: <strong class="${r.stockActual<=5?'low':''}">${r.stockActual}</strong></div>
+          </div>
+        </div>
+      `).join('');
+      countEl.textContent = filtered.length + ' de ' + stockData.length + ' productos';
+    }
+
+    document.getElementById('catalogoSearch').addEventListener('input', _debounce(renderCatalogo, 200));
+    document.getElementById('catalogoTipo').addEventListener('change', renderCatalogo);
+    document.getElementById('catalogoMarca').addEventListener('change', renderCatalogo);
+    document.getElementById('catalogoConFoto').addEventListener('change', renderCatalogo);
+    document.getElementById('catalogoRefresh').onclick = (e) => { e.preventDefault(); ensureStockLoaded(true).then(() => { fillCatalogoFilterOptions(); renderCatalogo(); }); };
+    document.getElementById('catalogoClearFilters').onclick = (e) => {
+      e.preventDefault();
+      document.getElementById('catalogoSearch').value = '';
+      document.getElementById('catalogoTipo').value = '';
+      document.getElementById('catalogoMarca').value = '';
+      document.getElementById('catalogoConFoto').value = '';
+      renderCatalogo();
+    };
+
+    /* Ficha de producto (modal) con zoom sobre la foto */
+    const catalogModal = document.getElementById('catalogModal');
+    const catalogModalImgWrap = document.getElementById('catalogModalImgWrap');
+    const catalogModalImg = document.getElementById('catalogModalImg');
+
+    function openCatalogModal(sku){
+      const r = stockData.find(x => x.sku === sku);
+      if (!r) return;
+
+      catalogModalImgWrap.classList.remove('zoomed');
+      const noImg = document.getElementById('catalogModalNoImg');
+      if (r.imagenUrl) {
+        catalogModalImg.src = driveThumbUrl(r.imagenUrl, 1400);
+        catalogModalImg.alt = r.descripcion || r.sku;
+        catalogModalImg.style.display = 'block';
+        noImg.style.display = 'none';
+        document.getElementById('catalogModalZoomHint').textContent = 'Click en la foto para hacer zoom.';
+      } else {
+        catalogModalImg.style.display = 'none';
+        catalogModalImg.src = '';
+        noImg.style.display = 'flex';
+        document.getElementById('catalogModalZoomHint').textContent = '';
+      }
+
+      document.getElementById('catalogModalSku').textContent = r.sku + (r.marca ? ' · ' + r.marca : '');
+      document.getElementById('catalogModalTitle').textContent = r.descripcion || '(sin descripción)';
+      document.getElementById('catalogModalMeta').textContent = r.tipo || '';
+      document.getElementById('catalogModalQty').innerHTML =
+        'Cantidad real: <strong class="' + (r.stockActual <= 5 ? 'low' : '') + '">' + r.stockActual + '</strong>';
+
+      catalogModal.style.display = 'flex';
+      document.body.style.overflow = 'hidden';
+    }
+
+    function closeCatalogModal(){
+      catalogModal.style.display = 'none';
+      document.body.style.overflow = '';
+    }
+
+    document.getElementById('catalogoGrid').addEventListener('click', (e) => {
+      const card = e.target.closest('.catalog-card');
+      if (card) openCatalogModal(card.getAttribute('data-sku'));
+    });
+    document.getElementById('catalogModalClose').onclick = closeCatalogModal;
+    catalogModal.addEventListener('click', (e) => { if (e.target === catalogModal) closeCatalogModal(); });
+    catalogModalImgWrap.addEventListener('click', () => { catalogModalImgWrap.classList.toggle('zoomed'); });
+    document.addEventListener('keydown', (e) => {
+      if (e.key === 'Escape' && catalogModal.style.display !== 'none') closeCatalogModal();
+    });
+
+    /* =========================================================
+     * ALERTAS DE STOCK (sin stock / stock bajo) — dentro de la app,
+     * sin depender de email ni WhatsApp.
+     * ========================================================= */
+    function computeAlertas(){
+      const cero = stockData.filter(r => r.stockActual <= 0);
+      const bajo = stockData.filter(r => r.stockActual > 0 && r.stockActual <= 5);
+      return { cero, bajo };
+    }
+
+    function updateAlertBadge(count){
+      const badge = document.getElementById('alertBadge');
+      if (count > 0) { badge.textContent = count; badge.style.display = 'inline-block'; }
+      else { badge.style.display = 'none'; }
+    }
+
+    function renderAlertas(){
+      const { cero, bajo } = computeAlertas();
+      const body = document.getElementById('alertasBody');
+      const summary = document.getElementById('alertasSummary');
+      summary.textContent = cero.length + ' sin stock · ' + bajo.length + ' con stock bajo';
+      updateAlertBadge(cero.length + bajo.length);
+
+      const rows = [
+        ...cero.map(r => ({ ...r, estado: 'Sin stock', cls: 'status-cero' })),
+        ...bajo.map(r => ({ ...r, estado: 'Stock bajo', cls: 'status-bajo' }))
+      ];
+
+      if (!rows.length) { body.innerHTML = '<tr><td colspan="6" class="muted">Sin alertas: todo el stock está por encima del mínimo.</td></tr>'; return; }
+
+      body.innerHTML = rows.map(r => `
+        <tr>
+          <td class="${r.cls}">${r.estado}</td>
+          <td>${r.sku}</td>
+          <td>${r.descripcion}</td>
+          <td>${r.tipo}</td>
+          <td>${r.marca}</td>
+          <td style="text-align:right" class="${r.cls}">${r.stockActual}</td>
+        </tr>
+      `).join('');
+    }
+
+    document.getElementById('alertasRefresh').onclick = (e) => { e.preventDefault(); ensureStockLoaded(true).then(renderAlertas); };
+
+    /* Banner de aviso: se muestra como máximo 1 vez al mes por navegador/dispositivo. */
+    function checkMonthlyAlertBanner(){
+      ensureStockLoaded().then(() => {
+        const { cero, bajo } = computeAlertas();
+        updateAlertBadge(cero.length + bajo.length);
+        if (cero.length + bajo.length === 0) return;
+
+        const KEY = 'remitera-last-alert-banner';
+        const THIRTY_DAYS = 30 * 24 * 60 * 60 * 1000;
+        const last = Number(localStorage.getItem(KEY) || 0);
+        const now = Date.now();
+        if (now - last < THIRTY_DAYS) return;
+
+        const banner = document.getElementById('monthlyAlertBanner');
+        banner.querySelector('.alert-banner-text').textContent =
+          '⚠️ Tenés ' + cero.length + ' producto(s) sin stock y ' + bajo.length + ' con stock bajo.';
+        banner.style.display = 'flex';
+        try { localStorage.setItem(KEY, String(now)); } catch (e) {}
+      }).catch(() => {});
+    }
+
+    document.getElementById('alertBannerClose').onclick = () => {
+      document.getElementById('monthlyAlertBanner').style.display = 'none';
+    };
+    document.getElementById('alertBannerGo').onclick = () => {
+      document.getElementById('monthlyAlertBanner').style.display = 'none';
+      document.querySelector('[data-page="pg-alertas"]').click();
+    };
+
+    checkMonthlyAlertBanner();
+    ensureStockLoaded().then(refreshAllSkuDatalists).catch(() => {}); // refresca el autocompletado del Remito con el stock real
+
+    /* =========================================================
+     * ALTA DE PRODUCTO (buscar SKU → sumar stock existente, o crear nuevo)
+     * ========================================================= */
+    const altaSkuBuscar = document.getElementById('altaSkuBuscar');
+    const altaExistentePanel = document.getElementById('altaExistentePanel');
+    const altaExistenteSubmitWrap = document.getElementById('altaExistenteSubmitWrap');
+    const altaNuevoPanel = document.getElementById('altaNuevoPanel');
+    const altaNuevoSubmitWrap = document.getElementById('altaNuevoSubmitWrap');
+    const altaSkuHint = document.getElementById('altaSkuHint');
+
+    let altaModoAutoSku = false;
+
+    function mostrarPanelNuevo(skuTexto){
+      altaExistentePanel.style.display = 'none'; altaExistenteSubmitWrap.style.display = 'none';
+      altaNuevoPanel.style.display = 'block'; altaNuevoSubmitWrap.style.display = 'flex';
+      document.getElementById('altaNuevoSkuDisplay').textContent = skuTexto || 'se generará automáticamente';
+    }
+
+    function altaBuscarSku(){
+      altaModoAutoSku = false;
+      const sku = altaSkuBuscar.value.trim();
+      const altaMsg = document.getElementById('altaMsg');
+      altaMsg.textContent = ''; altaMsg.className = '';
+
+      if (!sku) {
+        altaExistentePanel.style.display = 'none'; altaExistenteSubmitWrap.style.display = 'none';
+        altaNuevoPanel.style.display = 'none'; altaNuevoSubmitWrap.style.display = 'none';
+        altaSkuHint.textContent = '';
+        return;
+      }
+
+      const found = stockData.find(r => r.sku === sku);
+
+      if (found) {
+        altaSkuHint.textContent = 'Producto existente encontrado.';
+        altaNuevoPanel.style.display = 'none'; altaNuevoSubmitWrap.style.display = 'none';
+        altaExistentePanel.style.display = 'block'; altaExistenteSubmitWrap.style.display = 'flex';
+
+        document.getElementById('altaExistenteDescripcion').textContent = found.descripcion || '(sin descripción)';
+        document.getElementById('altaExistenteMeta').textContent = [found.tipo, found.marca].filter(Boolean).join(' · ');
+        document.getElementById('altaExistenteStockActual').textContent = found.stockActual;
+
+        const fotoWrap = document.getElementById('altaExistenteFotoWrap');
+        const fileLabel = document.getElementById('altaExistenteFileLabel');
+        if (found.imagenUrl) {
+          fotoWrap.innerHTML = `<img src="${driveThumbUrl(found.imagenUrl, 200)}" class="alta-foto-thumb" alt="Foto ${found.sku}" />`;
+          fileLabel.textContent = 'Reemplazar foto (opcional)';
+        } else {
+          fotoWrap.innerHTML = `<div class="alta-foto-noimg">📦</div>`;
+          fileLabel.textContent = 'Agregar foto (no tiene)';
+        }
+      } else {
+        altaSkuHint.textContent = 'No existe todavía: se va a crear con ese código.';
+        mostrarPanelNuevo(sku);
+      }
+    }
+
+    altaSkuBuscar.addEventListener('input', _debounce(altaBuscarSku, 250));
+    altaSkuBuscar.addEventListener('blur', altaBuscarSku);
+
+    document.getElementById('altaNuevoAutoBtn').onclick = (e) => {
+      e.preventDefault();
+      altaSkuBuscar.value = '';
+      altaModoAutoSku = true;
+      altaSkuHint.textContent = 'Producto nuevo: el código SKU se va a generar automáticamente.';
+      document.getElementById('altaMsg').textContent = ''; document.getElementById('altaMsg').className = '';
+      mostrarPanelNuevo('');
+    };
+
+    document.getElementById('altaExistenteSubmit').onclick = async (e) => {
+      e.preventDefault();
+      const altaMsg = document.getElementById('altaMsg');
+      altaMsg.textContent = ''; altaMsg.className = '';
+
+      const sku = altaSkuBuscar.value.trim();
+      const cantidad = Number(document.getElementById('altaExistenteCantidad').value || 0);
+      const file = document.getElementById('altaExistenteFile').files[0];
+
+      if (!sku || !(cantidad > 0)) { altaMsg.textContent = 'Ingresá una cantidad válida.'; altaMsg.className = 'err'; return; }
+
+      try {
+        const payload = { action: 'sumarStock', sku, cantidad };
+        if (file) payload.imagenBase64 = await fileToCompressedBase64(file);
+        if (file) payload.imagenName = sku + '.jpg';
+
+        const res = await fetch(PROXY_URL, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) });
+        const json = await res.json();
+        if (!json.ok) { altaMsg.textContent = '❌ ' + (json.error || 'Error'); altaMsg.className = 'err'; return; }
+
+        altaMsg.textContent = '✅ Se sumaron ' + cantidad + ' unidades al SKU ' + sku + '.'; altaMsg.className = 'ok';
+        const row = stockData.find(r => r.sku === sku);
+        if (row) { row.stockInicial += cantidad; row.stockActual += cantidad; if (json.imagenUrl) row.imagenUrl = json.imagenUrl; }
+        document.getElementById('altaExistenteCantidad').value = '1';
+        document.getElementById('altaExistenteFile').value = '';
+        altaBuscarSku();
+      } catch (err) {
+        altaMsg.textContent = '❌ Error de red: ' + err.message; altaMsg.className = 'err';
+      }
+    };
+
+    document.getElementById('altaSubmit').onclick = async (e) => {
+      e.preventDefault();
+      const altaMsg = document.getElementById('altaMsg');
+      altaMsg.textContent = ''; altaMsg.className = '';
+
+      const skuManual = altaSkuBuscar.value.trim();
+      const descripcion = document.getElementById('altaDescripcion').value.trim();
+      const tipo = document.getElementById('altaTipo').value.trim();
+      const marca = document.getElementById('altaMarca').value.trim();
+      const stockInicial = Number(document.getElementById('altaStockInicial').value || 0);
+      const file = document.getElementById('altaNuevoFile').files[0];
+
+      if (!descripcion) { altaMsg.textContent = 'Completá al menos la Descripción.'; altaMsg.className = 'err'; return; }
+
+      try {
+        const producto = { descripcion, tipo, marca, stockInicial };
+        if (!altaModoAutoSku && skuManual) producto.sku = skuManual; // si no, el backend genera el SKU automáticamente
+        if (file) { producto.imagenBase64 = await fileToCompressedBase64(file); producto.imagenName = (skuManual || 'nuevo') + '.jpg'; }
+
+        const res = await fetch(PROXY_URL, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ action: 'addProducto', producto }) });
+        const json = await res.json();
+        if (!json.ok) { altaMsg.textContent = '❌ ' + (json.error || 'Error'); altaMsg.className = 'err'; return; }
+
+        altaMsg.textContent = '✅ Producto ' + json.sku + ' agregado.'; altaMsg.className = 'ok';
+        stockData.push({ sku: json.sku, descripcion, tipo, marca, stockInicial, entregado: 0, stockActual: stockInicial, imagenUrl: json.imagenUrl || '' });
+        refreshAllSkuDatalists(); // así el Remito ya puede usar este SKU nuevo sin recargar la página
+
+        altaModoAutoSku = false;
+        altaSkuBuscar.value = '';
+        document.getElementById('altaDescripcion').value = '';
+        document.getElementById('altaTipo').value = '';
+        document.getElementById('altaMarca').value = '';
+        document.getElementById('altaStockInicial').value = '0';
+        document.getElementById('altaNuevoFile').value = '';
+        altaBuscarSku();
+      } catch (err) {
+        altaMsg.textContent = '❌ Error de red: ' + err.message; altaMsg.className = 'err';
+      }
+    };
+
+    /* =========================================================
+     * HISTÓRICO DE ENTREGAS
+     * ========================================================= */
+    let histData = [];
+    let _histLoading = false;
+
+    async function loadHistorial(){
+      if (_histLoading) return;
+      _histLoading = true;
+      const list = document.getElementById('histList');
+      list.innerHTML = '<div class="muted">Cargando...</div>';
+      try {
+        const res = await fetch(PROXY_URL + '?action=historial');
+        const json = await res.json();
+        if (!json.ok) { list.innerHTML = '<div class="err">Error: ' + (json.error||'desconocido') + '</div>'; return; }
+        histData = json.remitos || [];
+        fillHistUsuarioOptions();
+        renderHistorial();
+      } catch (err) {
+        list.innerHTML = '<div class="err">Error de red: ' + err.message + '</div>';
+      } finally {
+        _histLoading = false;
+      }
+    }
+
+    function fillHistUsuarioOptions(){
+      const sel = document.getElementById('histUsuario');
+      const usuarios = [...new Set(histData.map(r => r.usuario).filter(Boolean))].sort();
+      const prev = sel.value;
+      sel.innerHTML = '<option value="">Usuario (todos)</option>' + usuarios.map(u => `<option value="${u}">${u}</option>`).join('');
+      sel.value = prev;
+    }
+
+    function renderHistorial(){
+      const list = document.getElementById('histList');
+      const recentBody = document.getElementById('histRecentBody');
+      const q = document.getElementById('histSearch').value.trim().toLowerCase();
+      const skuQ = document.getElementById('histSku').value.trim().toLowerCase();
+      const usuario = document.getElementById('histUsuario').value;
+      const desde = document.getElementById('histFechaDesde').value;
+      const hasta = document.getElementById('histFechaHasta').value;
+      const orden = document.getElementById('histOrden').value;
+
+      let filtered = histData.filter(rm => {
+        if (q && !(rm.nroRemito.toLowerCase().includes(q) || rm.puntoVenta.toLowerCase().includes(q) || rm.usuario.toLowerCase().includes(q))) return false;
+        if (usuario && rm.usuario !== usuario) return false;
+        if (desde && rm.fecha < desde) return false;
+        if (hasta && rm.fecha > hasta) return false;
+        if (skuQ && !rm.lineas.some(l => l.sku.toLowerCase().includes(skuQ) || l.descripcion.toLowerCase().includes(skuQ))) return false;
+        return true;
+      });
+
+      // Se ordena por el número de remito (R0001, R0002...), no por el Timestamp:
+      // el número es secuencial y confiable; el Timestamp de filas viejas puede
+      // tener datos mal cargados y desordenar todo.
+      const nroNum = (rm) => Number((String(rm.nroRemito).match(/(\d+)/) || [0, 0])[1]) || 0;
+      filtered = filtered.slice().sort((a, b) => orden === 'asc'
+        ? nroNum(a) - nroNum(b)
+        : nroNum(b) - nroNum(a));
+
+      if (!filtered.length){ list.innerHTML = '<div class="muted">Sin resultados.</div>'; recentBody.innerHTML = '<tr><td colspan="6" class="muted">Sin resultados.</td></tr>'; return; }
+
+      list.innerHTML = filtered.map((rm, i) => `
+        <div class="hist-item" data-idx="${i}">
+          <div class="hist-head">
+            <div><strong>${rm.nroRemito}</strong> · ${rm.puntoVenta}</div>
+            <div class="badge">${rm.fecha}</div>
+          </div>
+          <div class="muted">Usuario: ${rm.usuario || '-'} · Ítems: ${rm.totalItems} ${rm.pdfUrl ? ' · <a href="'+rm.pdfUrl+'" target="_blank" rel="noopener">Ver PDF</a>' : ''}</div>
+          <div class="hist-lines" id="hist-lines-${i}">
+            <table>
+              <thead><tr><th>SKU</th><th>Descripción</th><th>Tipo</th><th>Marca</th><th style="text-align:right">Cant.</th></tr></thead>
+              <tbody>
+                ${rm.lineas.map(l => `<tr><td>${l.sku}</td><td>${l.descripcion}</td><td>${l.tipo}</td><td>${l.marca}</td><td style="text-align:right">${l.cantidad}</td></tr>`).join('')}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      `).join('');
+
+      list.querySelectorAll('.hist-item').forEach(item => {
+        item.addEventListener('click', () => {
+          const idx = item.getAttribute('data-idx');
+          document.getElementById('hist-lines-' + idx).classList.toggle('open');
+        });
+      });
+
+      recentBody.innerHTML = filtered.slice(0, 15).map(rm => `
+        <tr>
+          <td>${rm.nroRemito}</td>
+          <td>${rm.fecha}</td>
+          <td>${rm.puntoVenta}</td>
+          <td>${rm.usuario || '-'}</td>
+          <td style="text-align:right">${rm.totalItems}</td>
+          <td>${rm.pdfUrl ? `<a href="${rm.pdfUrl}" target="_blank" rel="noopener">Ver</a>` : '-'}</td>
+        </tr>
+      `).join('');
+    }
+
+    document.getElementById('histSearch').addEventListener('input', _debounce(renderHistorial, 200));
+    document.getElementById('histSku').addEventListener('input', _debounce(renderHistorial, 200));
+    document.getElementById('histUsuario').addEventListener('change', renderHistorial);
+    document.getElementById('histFechaDesde').addEventListener('change', renderHistorial);
+    document.getElementById('histFechaHasta').addEventListener('change', renderHistorial);
+    document.getElementById('histOrden').addEventListener('change', renderHistorial);
+    document.getElementById('histRefresh').onclick = (e)=>{ e.preventDefault(); loadHistorial(); };
+    document.getElementById('histClearFilters').onclick = (e) => {
+      e.preventDefault();
+      document.getElementById('histSearch').value = '';
+      document.getElementById('histSku').value = '';
+      document.getElementById('histUsuario').value = '';
+      document.getElementById('histFechaDesde').value = '';
+      document.getElementById('histFechaHasta').value = '';
+      document.getElementById('histOrden').value = 'desc';
+      renderHistorial();
+    };
+
+    /* =========================================================
+     * TOGGLE DE TEMA (claro/oscuro)
+     * ========================================================= */
+    function applyThemeUI(theme){
+      const icon = document.getElementById('themeIcon');
+      const label = document.getElementById('themeLabel');
+      if (theme === 'dark') { icon.textContent = '☀️'; label.textContent = 'Claro'; }
+      else { icon.textContent = '🌙'; label.textContent = 'Oscuro'; }
+    }
+    (function initThemeUI(){
+      const current = document.documentElement.getAttribute('data-theme') || 'light';
+      applyThemeUI(current);
+    })();
+    document.getElementById('themeToggle').onclick = () => {
+      const current = document.documentElement.getAttribute('data-theme') || 'light';
+      const next = current === 'dark' ? 'light' : 'dark';
+      document.documentElement.setAttribute('data-theme', next);
+      try { localStorage.setItem('remitera-theme', next); } catch (e) {}
+      applyThemeUI(next);
+    };
+  </script>
+</body>
+</html>

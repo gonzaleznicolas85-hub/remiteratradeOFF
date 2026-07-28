@@ -1,0 +1,34 @@
+body {
+  font-family: sans-serif;
+  background-color: black;
+  color: #ffc107;
+  padding: 20px;
+}
+.container {
+  max-width: 800px;
+  margin: 0 auto;
+}
+input, textarea, button {
+  width: 100%;
+  padding: 8px;
+  margin-bottom: 10px;
+  box-sizing: border-box;
+}
+table {
+  width: 100%;
+  background: #333;
+  color: white;
+  margin-bottom: 20px;
+}
+th, td {
+  padding: 8px;
+  text-align: left;
+}
+#registrar, #agregar {
+  background-color: #ffc107;
+  border: none;
+  color: black;
+  font-weight: bold;
+  cursor: pointer;
+  padding: 10px;
+}
