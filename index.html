@@ -183,7 +183,7 @@
     .pedido-fecha{font-size:11px;color:var(--text-muted);white-space:nowrap}
     .pedido-detalle{font-size:13px;margin-top:4px}
     .pedido-meta{font-size:12px;color:var(--text-muted);margin-top:4px}
-    .pedido-estado{display:inline-block;border-radius:999px;padding:2px 9px;font-size:11px;font-weight:700;white-space:nowrap}
+    .pedido-estado-select{border-radius:999px;padding:2px 8px;font-size:11px;font-weight:700;white-space:nowrap;border:none;cursor:pointer;-webkit-appearance:none;appearance:none}
     .pedido-estado-ok{background:var(--accent-soft);color:var(--accent-soft-text)}
     .pedido-estado-bad{background:rgba(239,68,68,.15);color:var(--danger)}
     .pedido-estado-neutral{background:var(--bg-subtle);color:var(--text-muted)}
@@ -391,11 +391,17 @@
         <div class="row" style="margin-top:12px">
           <div>
             <label>Sumar cantidad al stock</label>
-            <input type="number" id="altaExistenteCantidad" min="1" value="1" />
+            <input type="number" id="altaExistenteCantidad" min="0" value="0" />
           </div>
           <div>
             <label id="altaExistenteFileLabel">Agregar foto</label>
             <input type="file" id="altaExistenteFile" accept="image/*" capture="environment" />
+          </div>
+        </div>
+        <div class="row" style="margin-top:10px">
+          <div>
+            <label>Medidas</label>
+            <input type="text" id="altaExistenteMedidas" placeholder="Ej: 40x30x15 cm" />
           </div>
         </div>
       </section>
@@ -1765,6 +1771,7 @@
         document.getElementById('altaExistenteDescripcion').textContent = found.descripcion || '(sin descripción)';
         document.getElementById('altaExistenteMeta').textContent = [found.tipo, found.marca].filter(Boolean).join(' · ');
         document.getElementById('altaExistenteStockActual').textContent = found.stockActual;
+        document.getElementById('altaExistenteMedidas').value = found.medidas || '';
 
         const fotoWrap = document.getElementById('altaExistenteFotoWrap');
         const fileLabel = document.getElementById('altaExistenteFileLabel');
@@ -1800,12 +1807,15 @@
 
       const sku = altaSkuBuscar.value.trim();
       const cantidad = Number(document.getElementById('altaExistenteCantidad').value || 0);
+      const medidas = document.getElementById('altaExistenteMedidas').value.trim();
       const file = document.getElementById('altaExistenteFile').files[0];
 
-      if (!sku || !(cantidad > 0)) { altaMsg.textContent = 'Ingresá una cantidad válida.'; altaMsg.className = 'err'; return; }
+      if (!sku || (!(cantidad > 0) && !medidas && !file)) {
+        altaMsg.textContent = 'Ingresá una cantidad, medidas o una foto para actualizar.'; altaMsg.className = 'err'; return;
+      }
 
       try {
-        const payload = { action: 'sumarStock', sku, cantidad };
+        const payload = { action: 'sumarStock', sku, cantidad, medidas };
         if (file) payload.imagenBase64 = await fileToCompressedBase64(file);
         if (file) payload.imagenName = sku + '.jpg';
 
@@ -1813,10 +1823,19 @@
         const json = await res.json();
         if (!json.ok) { altaMsg.textContent = '❌ ' + (json.error || 'Error'); altaMsg.className = 'err'; return; }
 
-        altaMsg.textContent = '✅ Se sumaron ' + cantidad + ' unidades al SKU ' + sku + '.'; altaMsg.className = 'ok';
+        const partes = [];
+        if (cantidad > 0) partes.push('se sumaron ' + cantidad + ' unidades');
+        if (medidas) partes.push('medidas actualizadas');
+        if (file) partes.push('foto actualizada');
+        altaMsg.textContent = '✅ SKU ' + sku + ': ' + (partes.join(', ') || 'actualizado') + '.'; altaMsg.className = 'ok';
+
         const row = stockData.find(r => r.sku === sku);
-        if (row) { row.stockInicial += cantidad; row.stockActual += cantidad; if (json.imagenUrl) row.imagenUrl = json.imagenUrl; }
-        document.getElementById('altaExistenteCantidad').value = '1';
+        if (row) {
+          if (cantidad > 0) { row.stockInicial += cantidad; row.stockActual += cantidad; }
+          if (json.imagenUrl) row.imagenUrl = json.imagenUrl;
+          if (medidas) row.medidas = medidas;
+        }
+        document.getElementById('altaExistenteCantidad').value = '0';
         document.getElementById('altaExistenteFile').value = '';
         altaBuscarSku();
       } catch (err) {
@@ -2049,7 +2068,9 @@
           <div class="pedido-head">
             <div class="pedido-cliente">${p.cliente || p.solicitante || '(sin nombre)'}</div>
             <div style="display:flex;align-items:center;gap:8px">
-              ${p.estado ? `<span class="pedido-estado ${pedidoEstadoClass(p.estado)}">${p.estado}</span>` : ''}
+              <select class="pedido-estado-select ${pedidoEstadoClass(p.estado)}" data-id="${p.id}">
+                ${pedidoEstadoOptionsHtml(p.estado)}
+              </select>
               <span class="pedido-fecha">${p.fecha || ''}</span>
             </div>
           </div>
@@ -2061,6 +2082,35 @@
         </div>
       `).join('');
     }
+
+    const PEDIDO_ESTADOS = ['ENTREGADO', 'NO STOCK', 'PENDIENTE'];
+    function pedidoEstadoOptionsHtml(actual){
+      const opts = PEDIDO_ESTADOS.slice();
+      if (actual && !opts.includes(actual)) opts.unshift(actual); // conserva un valor "raro" que ya tuviera cargado
+      if (!actual) opts.unshift('');
+      return opts.map(o => `<option value="${o}" ${o === (actual||'') ? 'selected' : ''}>${o || '(sin estado)'}</option>`).join('');
+    }
+
+    document.getElementById('pedidosList').addEventListener('change', async (e) => {
+      const sel = e.target.closest('.pedido-estado-select');
+      if (!sel) return;
+      const id = sel.dataset.id;
+      const nuevoEstado = sel.value;
+      sel.disabled = true;
+      try {
+        const res = await fetch(PROXY_URL, { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ action:'updateEstadoPedido', id, estado: nuevoEstado }) });
+        const json = await res.json();
+        if (!json.ok) { alert('No se pudo actualizar el estado: ' + (json.error || 'error desconocido')); sel.disabled = false; return; }
+        const p = pedidosData.find(x => x.id === id);
+        if (p) p.estado = nuevoEstado;
+        sel.className = 'pedido-estado-select ' + pedidoEstadoClass(nuevoEstado);
+        fillPedidosEstadoOptions();
+      } catch (err) {
+        alert('Error de red actualizando el estado: ' + err.message);
+      } finally {
+        sel.disabled = false;
+      }
+    });
 
     document.getElementById('pedidosSearch').addEventListener('input', _debounce(renderPedidos, 200));
     document.getElementById('pedidosEstado').addEventListener('change', renderPedidos);

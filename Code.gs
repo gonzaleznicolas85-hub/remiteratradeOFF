@@ -722,6 +722,32 @@ function handleGetPedidos_() {
   return jsonOut({ ok:true, pedidos: pedidos });
 }
 
+/**
+ * Actualiza el estado de un pedido en la planilla externa de pedidos.
+ * El id viene como "PED<fila>" (ver handleGetPedidos_), así se sabe
+ * exactamente qué fila tocar sin tener que re-buscar por texto.
+ */
+function handleUpdateEstadoPedido_(data) {
+  const id = String(data.id || '').trim();
+  const estado = String(data.estado || '').trim();
+  if (!id) return jsonOut({ ok:false, error:'Falta id de pedido' }, 400);
+
+  const row = Number(id.replace(/\D/g, ''));
+  if (!row || row < 2) return jsonOut({ ok:false, error:'Id de pedido inválido' }, 400);
+
+  let sh;
+  try {
+    sh = SpreadsheetApp.openById(PEDIDOS_SHEET_ID).getSheetByName(PEDIDOS_TAB_NAME);
+  } catch (eOpen) {
+    return jsonOut({ ok:false, error:'No se pudo abrir la planilla de pedidos: ' + eOpen }, 500);
+  }
+  if (!sh) return jsonOut({ ok:false, error:'No existe la hoja ' + PEDIDOS_TAB_NAME }, 500);
+  if (row > sh.getLastRow()) return jsonOut({ ok:false, error:'La fila del pedido ya no existe' }, 404);
+
+  sh.getRange(row, 10).setValue(estado); // columna J (índice 9, 1-based=10) = Estado
+  return jsonOut({ ok:true, id: id, estado: estado });
+}
+
 function doPost(e) {
   try {
     const ss = getSS_();
@@ -753,6 +779,10 @@ function doPost(e) {
 
     if (action === 'sumarStock') {
       return handleSumarStock_(shStock, data);
+    }
+
+    if (action === 'updateEstadoPedido') {
+      return handleUpdateEstadoPedido_(data);
     }
 
     const header    = data.header || {};
@@ -971,22 +1001,27 @@ function handleUploadImagen_(shStock, data) {
 function handleSumarStock_(shStock, data) {
   const sku = String(data.sku || '').trim();
   const cantidad = Number(data.cantidad || 0);
+  const medidas = String(data.medidas || '').trim();
 
   if (!sku) return jsonOut({ ok:false, error:'Falta SKU' }, 400);
-  if (!(cantidad > 0)) return jsonOut({ ok:false, error:'Cantidad inválida' }, 400);
+  if (!(cantidad > 0) && !medidas && !data.imagenBase64) {
+    return jsonOut({ ok:false, error:'Nada para actualizar: indicá cantidad, medidas o una foto' }, 400);
+  }
 
   const row = findStockRowBySku_(shStock, sku);
   if (row === -1) return jsonOut({ ok:false, error:'El SKU ' + sku + ' no existe en ' + HOJA_STOCK }, 404);
 
   const map = getStockMap_(shStock);
 
-  if (map.idxStockInicial >= 0) {
-    const actual = Number(shStock.getRange(row, map.idxStockInicial + 1).getValue() || 0);
-    shStock.getRange(row, map.idxStockInicial + 1).setValue(actual + cantidad);
-  }
-  if (map.idxStockActual >= 0) {
-    const actual = Number(shStock.getRange(row, map.idxStockActual + 1).getValue() || 0);
-    shStock.getRange(row, map.idxStockActual + 1).setValue(actual + cantidad);
+  if (cantidad > 0) {
+    if (map.idxStockInicial >= 0) {
+      const actual = Number(shStock.getRange(row, map.idxStockInicial + 1).getValue() || 0);
+      shStock.getRange(row, map.idxStockInicial + 1).setValue(actual + cantidad);
+    }
+    if (map.idxStockActual >= 0) {
+      const actual = Number(shStock.getRange(row, map.idxStockActual + 1).getValue() || 0);
+      shStock.getRange(row, map.idxStockActual + 1).setValue(actual + cantidad);
+    }
   }
 
   let imagenUrl = '';
@@ -1000,5 +1035,10 @@ function handleSumarStock_(shStock, data) {
     }
   }
 
-  return jsonOut({ ok:true, sku: sku, row: row, imagenUrl: imagenUrl });
+  if (medidas) {
+    const colMedidas = ensureMedidasHeader_(shStock);
+    shStock.getRange(row, colMedidas).setValue(medidas);
+  }
+
+  return jsonOut({ ok:true, sku: sku, row: row, imagenUrl: imagenUrl, medidas: medidas });
 }
