@@ -183,11 +183,13 @@
     .gs-sub{font-size:12px;color:var(--text-muted)}
     .gs-empty{padding:12px;font-size:13px;color:var(--text-muted)}
 
-    /* Autocompletado de SKU (Remito) — dropdown propio en vez de <datalist>,
-       que en iOS Safari no muestra sugerencias de forma confiable. */
-    .sku-input-wrap{position:relative}
-    .sku-dropdown{position:absolute;left:0;right:0;top:calc(100% + 2px);background:var(--bg-elevated);border:1px solid var(--border);border-radius:10px;box-shadow:var(--shadow);max-height:260px;overflow-y:auto;z-index:45}
-    .sku-option{padding:8px 10px;border-bottom:1px solid var(--border-soft);cursor:pointer;display:flex;flex-direction:column;gap:1px}
+    /* Autocompletado de SKU (Remito) — dropdown propio en vez de <datalist>
+       (iOS Safari no muestra sugerencias de <datalist> de forma confiable).
+       Se renderiza "flotando" en position:fixed anclado a document.body, no
+       anidado dentro de la fila/tarjeta, para que ningún contenedor padre
+       (la fila con display:block en mobile, overflow, etc.) pueda recortarlo. */
+    .sku-dropdown-portal{position:fixed;background:var(--bg-elevated);border:1px solid var(--border);border-radius:10px;box-shadow:var(--shadow);max-height:260px;overflow-y:auto;z-index:200;display:none}
+    .sku-option{padding:10px 12px;border-bottom:1px solid var(--border-soft);cursor:pointer;display:flex;flex-direction:column;gap:1px}
     .sku-option:last-child{border-bottom:none}
     .sku-option:hover,.sku-option:focus{background:var(--bg-subtle)}
 
@@ -935,55 +937,71 @@
 
     // Antes usaba <input list> + <datalist>: en iOS Safari esa combinación no
     // muestra ninguna sugerencia (limitación conocida del navegador), así que
-    // el autocompletado de SKU quedaba invisible en iPhone. Se reemplaza por un
-    // dropdown propio en HTML/JS que consulta getProductList() en cada tecleo,
-    // así funciona igual en todos los navegadores/dispositivos.
+    // el autocompletado de SKU quedaba invisible en iPhone. Después se probó
+    // con un dropdown propio ANIDADO en cada fila (position:absolute dentro de
+    // la fila), pero la fila se transforma en tarjeta con CSS en mobile
+    // (display:block) y ahí Safari lo recorta/oculta igual. Solución final:
+    // un único dropdown "portal", hijo directo de <body>, posicionado en
+    // position:fixed con las coordenadas reales del input — así ningún
+    // contenedor padre puede recortarlo, en ningún navegador.
     function refreshAllSkuDatalists(){} // ya no hace falta: el dropdown consulta datos en vivo
+
+    const skuDropdownPortal = document.createElement('div');
+    skuDropdownPortal.className = 'sku-dropdown-portal';
+    document.body.appendChild(skuDropdownPortal);
+    let skuDropdownActiveInput = null;
+
+    function positionSkuDropdown(input){
+      const r = input.getBoundingClientRect();
+      skuDropdownPortal.style.left = Math.round(r.left) + 'px';
+      skuDropdownPortal.style.top = Math.round(r.bottom + 4) + 'px';
+      skuDropdownPortal.style.width = Math.round(r.width) + 'px';
+    }
+
+    function renderSkuDropdownFor(input){
+      const q = input.value.trim().toLowerCase();
+      if (!q){ skuDropdownPortal.style.display = 'none'; skuDropdownActiveInput = null; return; }
+      const matches = getProductList()
+        .filter(p => String(p.sku).toLowerCase().includes(q) || String(p.descripcion||'').toLowerCase().includes(q))
+        .slice(0, 8);
+      if (!matches.length){ skuDropdownPortal.style.display = 'none'; skuDropdownActiveInput = null; return; }
+      skuDropdownActiveInput = input;
+      positionSkuDropdown(input);
+      skuDropdownPortal.innerHTML = matches.map(p => `
+        <div class="sku-option" data-sku="${p.sku}">
+          <span class="gs-title">${p.sku}</span>
+          <span class="gs-sub">${p.descripcion||''}</span>
+        </div>`).join('');
+      skuDropdownPortal.style.display = 'block';
+    }
+
+    function hideSkuDropdown(){ skuDropdownPortal.style.display = 'none'; skuDropdownActiveInput = null; }
+
+    // mousedown (no click) para que dispare ANTES del blur del input y el tap
+    // en una opción no se pierda cuando el dropdown se oculta al perder foco.
+    skuDropdownPortal.addEventListener('mousedown', (e) => {
+      const opt = e.target.closest('.sku-option');
+      if (!opt || !skuDropdownActiveInput) return;
+      e.preventDefault();
+      skuDropdownActiveInput.value = opt.dataset.sku;
+      skuDropdownActiveInput.dispatchEvent(new Event('change'));
+      hideSkuDropdown();
+    });
+    window.addEventListener('scroll', () => { if (skuDropdownActiveInput) positionSkuDropdown(skuDropdownActiveInput); }, true);
+    window.addEventListener('resize', () => { if (skuDropdownActiveInput) positionSkuDropdown(skuDropdownActiveInput); });
 
     function createSkuInput(){
       const wrap = document.createElement('div');
-      wrap.className = 'sku-input-wrap';
       const input = document.createElement('input');
       input.className = 'skuInput';
       input.placeholder = 'Escribí el código...';
       input.autocapitalize = 'off'; input.autocomplete = 'off'; input.inputmode = 'numeric';
 
-      const dropdown = document.createElement('div');
-      dropdown.className = 'sku-dropdown';
-      dropdown.style.display = 'none';
-
-      function renderSkuDropdown(){
-        const q = input.value.trim().toLowerCase();
-        if (!q){ dropdown.style.display = 'none'; dropdown.innerHTML = ''; return; }
-        const matches = getProductList()
-          .filter(p => String(p.sku).toLowerCase().includes(q) || String(p.descripcion||'').toLowerCase().includes(q))
-          .slice(0, 8);
-        if (!matches.length){ dropdown.style.display = 'none'; dropdown.innerHTML = ''; return; }
-        dropdown.innerHTML = matches.map(p => `
-          <div class="sku-option" data-sku="${p.sku}">
-            <span class="gs-title">${p.sku}</span>
-            <span class="gs-sub">${p.descripcion||''}</span>
-          </div>`).join('');
-        dropdown.style.display = 'block';
-      }
-
-      input.addEventListener('input', renderSkuDropdown);
-      input.addEventListener('focus', renderSkuDropdown);
-      input.addEventListener('blur', () => { setTimeout(() => { dropdown.style.display = 'none'; }, 150); });
-
-      // mousedown (no click) para que dispare ANTES del blur del input y el tap
-      // en una opción no se pierda cuando el dropdown se oculta al perder foco.
-      dropdown.addEventListener('mousedown', (e) => {
-        const opt = e.target.closest('.sku-option');
-        if (!opt) return;
-        e.preventDefault();
-        input.value = opt.dataset.sku;
-        dropdown.style.display = 'none';
-        input.dispatchEvent(new Event('change'));
-      });
+      input.addEventListener('input', () => renderSkuDropdownFor(input));
+      input.addEventListener('focus', () => renderSkuDropdownFor(input));
+      input.addEventListener('blur', () => { setTimeout(() => { if (skuDropdownActiveInput === input) hideSkuDropdown(); }, 150); });
 
       wrap.appendChild(input);
-      wrap.appendChild(dropdown);
       return { wrap, input };
     }
 
