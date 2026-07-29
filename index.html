@@ -853,11 +853,8 @@
      * o si algo falla, cae en la lista estática PRODUCTS como respaldo.
      */
     function getProductList(){
-      if (stockCacheLoaded && stockData.length) {
-        const bySku = new Map();
-        PRODUCTS.forEach(p => bySku.set(String(p.sku), p));
-        stockData.forEach(r => bySku.set(String(r.sku), { sku: r.sku, descripcion: r.descripcion, tipo: r.tipo, marca: r.marca }));
-        return Array.from(bySku.values());
+      if (stockCacheLoaded) {
+        return stockData.map(r => ({ sku: r.sku, descripcion: r.descripcion, tipo: r.tipo, marca: r.marca }));
       }
       return PRODUCTS;
     }
