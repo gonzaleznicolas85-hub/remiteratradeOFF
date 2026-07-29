@@ -170,6 +170,36 @@
     .modal-title{font-size:18px;font-weight:700;margin:4px 0}
     .modal-meta{color:var(--text-muted);font-size:13px;margin-bottom:8px}
     .modal-qty{font-size:14px;font-weight:600}
+
+    /* Buscador global */
+    .global-search-wrap{position:relative;max-width:980px;margin:8px auto 0;padding:0 16px;padding-left:calc(16px + env(safe-area-inset-left));padding-right:calc(16px + env(safe-area-inset-right))}
+    .global-search-input{width:100%;padding:11px 14px;border-radius:10px;border:1px solid var(--border);background:var(--bg-elevated);color:var(--text);font-size:15px}
+    .global-search-input:focus{outline:2px solid var(--accent);outline-offset:1px}
+    .global-search-results{position:absolute;left:16px;right:16px;top:calc(100% + 4px);background:var(--bg-elevated);border:1px solid var(--border);border-radius:10px;box-shadow:var(--shadow);max-height:360px;overflow-y:auto;z-index:60}
+    .gs-item{padding:10px 12px;border-bottom:1px solid var(--border-soft);cursor:pointer;display:flex;flex-direction:column;gap:2px}
+    .gs-item:last-child{border-bottom:none}
+    .gs-item:hover,.gs-item:focus{background:var(--bg-subtle)}
+    .gs-title{font-weight:600;font-size:14px}
+    .gs-sub{font-size:12px;color:var(--text-muted)}
+    .gs-empty{padding:12px;font-size:13px;color:var(--text-muted)}
+
+    /* Botón flotante (+) */
+    .fab{position:fixed;right:20px;bottom:calc(20px + env(safe-area-inset-bottom));width:56px;height:56px;border-radius:999px;background:var(--accent);color:#fff;border:none;font-size:28px;line-height:1;box-shadow:0 4px 14px rgba(0,0,0,.3);display:none;align-items:center;justify-content:center;cursor:pointer;z-index:40;transition:transform .12s var(--ease-out)}
+    .fab:active{transform:scale(.92)}
+    .fab.visible{display:flex}
+
+    /* Cola de envío offline */
+    .pending-badge{display:inline-flex;align-items:center;gap:6px;background:var(--warning);color:#1a1400;font-weight:700;font-size:12px;border-radius:999px;padding:4px 10px;margin-left:8px}
+    .pending-badge[hidden]{display:none}
+
+    /* Modal de éxito */
+    .success-modal .modal-body{text-align:center;padding:28px 20px}
+    .success-check{font-size:44px;margin-bottom:6px}
+    .success-nro{font-size:28px;font-weight:800;color:var(--accent);margin:4px 0 2px}
+    .success-sub{color:var(--text-muted);font-size:13px;margin-bottom:18px}
+    .success-actions{display:flex;flex-direction:column;gap:10px}
+    .btn-whatsapp{background:#25d366;color:#04210f;border:none}
+
     @media (prefers-reduced-motion: reduce) {
       *, *::before, *::after { animation-duration: .001ms !important; transition-duration: .001ms !important; }
     }
@@ -180,6 +210,10 @@
     <h1>Remito multi‑SKU</h1>
     <button type="button" id="themeToggle" aria-label="Cambiar a modo claro/oscuro"><span id="themeIcon">🌙</span> <span id="themeLabel">Oscuro</span></button>
   </header>
+  <div class="global-search-wrap">
+    <input type="text" id="globalSearch" class="global-search-input" placeholder="🔍 Buscar SKU, producto o remito..." autocomplete="off">
+    <div id="globalSearchResults" class="global-search-results" style="display:none"></div>
+  </div>
   <nav class="tabs" role="tablist">
     <button type="button" data-page="pg-remito" aria-current="page">Remito</button>
     <button type="button" data-page="pg-stock">Stock</button>
@@ -265,11 +299,14 @@
     <section class="card right">
       <div class="actions">
         <button class="btn btn-primary" id="submitBtn">Registrar remito</button>
+        <span id="pendingBadge" class="pending-badge" hidden>⏳ <span id="pendingCount">0</span> por sincronizar</span>
       </div>
     </section>
 
     <div id="msg"></div>
     </section>
+
+    <button type="button" id="fabAddLine" class="fab" aria-label="Agregar producto al remito">+</button>
 
     <section id="pg-stock" class="page">
       <section class="card">
@@ -480,6 +517,21 @@
         <div class="modal-meta" id="catalogModalMeta"></div>
         <div class="modal-qty" id="catalogModalQty"></div>
         <div class="note" id="catalogModalZoomHint" style="margin-top:8px"></div>
+      </div>
+    </div>
+  </div>
+
+  <div id="successModal" class="modal-overlay success-modal" style="display:none" role="dialog" aria-modal="true" aria-labelledby="successNro">
+    <div class="modal-content">
+      <button type="button" id="successModalClose" class="modal-close" aria-label="Cerrar">✕</button>
+      <div class="modal-body">
+        <div class="success-check">✅</div>
+        <div class="success-nro" id="successNro">R0000</div>
+        <div class="success-sub" id="successSub">Remito registrado</div>
+        <div class="success-actions">
+          <button type="button" id="successWhatsapp" class="btn btn-whatsapp">📲 Compartir por WhatsApp</button>
+          <button type="button" id="successOk" class="btn btn-ghost">Cerrar</button>
+        </div>
       </div>
     </div>
   </div>
@@ -948,6 +1000,85 @@
     document.getElementById('clearLines').onclick = (e)=>{ e.preventDefault(); tbody.innerHTML=''; computeTotal(); };
     addRow();
 
+    function generateClientPdf(nroRemito, header, lines){
+      if (!window.jspdf) return;
+      const { jsPDF } = window.jspdf; const doc = new jsPDF(); let y=10;
+      doc.setFontSize(14); doc.text('Remito ' + nroRemito,10,y); y+=8;
+      doc.setFontSize(10);
+      doc.text('Fecha: ' + header.fecha,10,y); y+=6;
+      doc.text('Punto de venta: ' + header.punto_venta,10,y); y+=6;
+      doc.text('Usuario: ' + (header.usuario||'-'),10,y); y+=6;
+      doc.text('Observaciones: ' + (header.obs||'-'),10,y); y+=8;
+      doc.text('Detalle:',10,y); y+=6; doc.setFont('courier','normal'); doc.text('SKU        Cant  | Descripción',10,y); y+=6;
+      lines.forEach(l=>{ const line = (String(l.sku)+'          ').slice(0,10) + ' ' + (String(l.cantidad)+'    ').slice(0,4) + ' | ' + (l.descripcion||''); doc.text(line,10,y); y+=6; if (y>280){ doc.addPage(); y=10; } });
+      doc.save('Remito_' + nroRemito + '.pdf');
+    }
+
+    /* =========================================================
+     * COLA DE ENVÍO OFFLINE
+     * Si falla la red al registrar, el remito se guarda en localStorage
+     * y se reintenta solo (al volver la conexión o cada 60s).
+     * ========================================================= */
+    const PENDING_KEY = 'remitera_pending_queue';
+    function loadQueue(){ try { return JSON.parse(localStorage.getItem(PENDING_KEY) || '[]'); } catch(e){ return []; } }
+    function saveQueue(q){ localStorage.setItem(PENDING_KEY, JSON.stringify(q)); }
+    function updatePendingBadge(){
+      const q = loadQueue();
+      const badge = document.getElementById('pendingBadge');
+      document.getElementById('pendingCount').textContent = q.length;
+      badge.hidden = q.length === 0;
+    }
+    function queueRemito(header, lines){
+      const q = loadQueue();
+      q.push({ header, lines, ts: Date.now() });
+      saveQueue(q);
+      updatePendingBadge();
+    }
+    let flushingQueue = false;
+    async function flushQueue(){
+      if (flushingQueue) return;
+      let q = loadQueue();
+      if (!q.length) return;
+      flushingQueue = true;
+      let syncedCount = 0;
+      while (q.length) {
+        const item = q[0];
+        try {
+          const form = new URLSearchParams();
+          form.append('header', JSON.stringify(item.header));
+          form.append('lines', JSON.stringify(item.lines));
+          const res = await fetch(PROXY_URL, { method:'POST', body: form });
+          const json = await res.json();
+          if (!json.ok) break; // error real del backend: se deja en cola para revisar a mano
+          q.shift(); saveQueue(q); updatePendingBadge(); syncedCount++;
+        } catch (err) { break; } // seguimos sin red, se reintenta después
+      }
+      flushingQueue = false;
+      if (syncedCount) {
+        msg.textContent = '🔄 ' + syncedCount + ' remito(s) pendientes se sincronizaron correctamente.'; msg.className='ok';
+      }
+    }
+    window.addEventListener('online', flushQueue);
+    setInterval(() => { if (loadQueue().length) flushQueue(); }, 60000);
+
+    /* =========================================================
+     * MODAL DE CONFIRMACIÓN + COMPARTIR POR WHATSAPP
+     * ========================================================= */
+    function openSuccessModal(nroRemito, itemCount, header){
+      document.getElementById('successNro').textContent = nroRemito;
+      document.getElementById('successSub').textContent = 'Registrado · ' + itemCount + ' ítem(s)' + (header && header.punto_venta ? ' · ' + header.punto_venta : '');
+      const text = 'Remito ' + nroRemito + (header && header.punto_venta ? ' — ' + header.punto_venta : '') + (header && header.fecha ? ' (' + header.fecha + ')' : '') + '. Ítems: ' + itemCount;
+      document.getElementById('successWhatsapp').onclick = () => {
+        if (navigator.share) { navigator.share({ text }).catch(() => {}); }
+        else { window.open('https://wa.me/?text=' + encodeURIComponent(text), '_blank'); }
+      };
+      document.getElementById('successModal').style.display = 'flex';
+    }
+    function closeSuccessModal(){ document.getElementById('successModal').style.display = 'none'; }
+    document.getElementById('successModalClose').onclick = closeSuccessModal;
+    document.getElementById('successOk').onclick = closeSuccessModal;
+    document.getElementById('successModal').addEventListener('click', (e) => { if (e.target.id === 'successModal') closeSuccessModal(); });
+
     async function submit(){
       msg.textContent=''; msg.className='';
 
@@ -963,9 +1094,11 @@
 
       if (!fechaEl.value || !puntoEl.value.trim() || lines.length===0){ msg.textContent='Completá fecha, punto y al menos un ítem con cantidad.'; msg.className='err'; return; }
 
+      const header = { fecha: fechaEl.value, punto_venta: puntoEl.value.trim(), usuario: usuarioEl.value.trim(), obs: obsEl.value.trim() };
+
       try {
         const form = new URLSearchParams();
-        form.append('header', JSON.stringify({ fecha: fechaEl.value, punto_venta: puntoEl.value.trim(), usuario: usuarioEl.value.trim(), obs: obsEl.value.trim() }));
+        form.append('header', JSON.stringify(header));
         form.append('lines', JSON.stringify(lines));
 
         const res = await fetch(PROXY_URL, { method:'POST', body: form });
@@ -973,25 +1106,26 @@
         if (!json.ok) { msg.textContent='❌ ' + (json.error||'Error'); if (json.detalle) msg.textContent += ' | ' + json.detalle.map(d=>d.sku+': '+d.error).join('; '); msg.className='err'; return; }
 
         msg.textContent='✅ Remito ' + json.nroRemito + ' registrado. Ítems: ' + lines.length; msg.className='ok';
-
-        if (window.jspdf) {
-          const { jsPDF } = window.jspdf; const doc = new jsPDF(); let y=10;
-          doc.setFontSize(14); doc.text('Remito ' + json.nroRemito,10,y); y+=8;
-          doc.setFontSize(10);
-          doc.text('Fecha: ' + fechaEl.value,10,y); y+=6;
-          doc.text('Punto de venta: ' + puntoEl.value.trim(),10,y); y+=6;
-          doc.text('Usuario: ' + (usuarioEl.value.trim()||'-'),10,y); y+=6;
-          doc.text('Observaciones: ' + (obsEl.value.trim()||'-'),10,y); y+=8;
-          doc.text('Detalle:',10,y); y+=6; doc.setFont('courier','normal'); doc.text('SKU        Cant  | Descripción',10,y); y+=6;
-          lines.forEach(l=>{ const line = (String(l.sku)+'          ').slice(0,10) + ' ' + (String(l.cantidad)+'    ').slice(0,4) + ' | ' + (l.descripcion||''); doc.text(line,10,y); y+=6; if (y>280){ doc.addPage(); y=10; } });
-          doc.save('Remito_' + json.nroRemito + '.pdf');
-        }
+        generateClientPdf(json.nroRemito, header, lines);
+        openSuccessModal(json.nroRemito, lines.length, header);
 
         puntoEl.value=''; resetUsuarioField(); obsEl.value=''; tbody.innerHTML=''; addRow(); computeTotal();
-      } catch (err) { msg.textContent='❌ Error de red: ' + err.message; msg.className='err'; }
+      } catch (err) {
+        queueRemito(header, lines);
+        msg.textContent = '📴 Sin conexión: el remito se guardó en este dispositivo y se va a enviar solo cuando vuelva la señal.'; msg.className='ok';
+        puntoEl.value=''; resetUsuarioField(); obsEl.value=''; tbody.innerHTML=''; addRow(); computeTotal();
+      }
     }
 
     document.getElementById('submitBtn').onclick = submit;
+    document.getElementById('fabAddLine').addEventListener('click', () => {
+      addRow();
+      const rows = tbody.querySelectorAll('tr');
+      const last = rows[rows.length - 1];
+      if (last) { last.scrollIntoView({ behavior:'smooth', block:'center' }); const input = last.querySelector('.skuInput'); if (input) input.focus(); }
+    });
+    updatePendingBadge();
+    flushQueue();
 
     /* =========================================================
      * NAV DE PESTAÑAS
@@ -1004,31 +1138,92 @@
 
     let histLoadedOnce = false;
 
-    tabButtons.forEach(btn => {
-      btn.addEventListener('click', () => {
-        const target = btn.getAttribute('data-page');
-        tabButtons.forEach(b => { b.removeAttribute('aria-current'); });
-        btn.setAttribute('aria-current','page');
-        Object.entries(pages).forEach(([id, el]) => el.classList.toggle('active', id === target));
+    function activateTab(target){
+      tabButtons.forEach(b => { b.removeAttribute('aria-current'); if (b.getAttribute('data-page') === target) b.setAttribute('aria-current','page'); });
+      Object.entries(pages).forEach(([id, el]) => el.classList.toggle('active', id === target));
+      document.getElementById('fabAddLine').classList.toggle('visible', target === 'pg-remito');
 
-        if (target === 'pg-stock') {
-          document.getElementById('stockBody').innerHTML = document.getElementById('stockBody').innerHTML || '<tr><td colspan="8" class="muted">Cargando...</td></tr>';
-          ensureStockLoaded().then(() => { fillStockFilterOptions(); renderStockTable(); })
-            .catch(err => { document.getElementById('stockBody').innerHTML = '<tr><td colspan="8" class="err">Error: ' + err.message + '</td></tr>'; });
-        }
-        if (target === 'pg-catalogo') {
-          ensureStockLoaded().then(() => { fillCatalogoFilterOptions(); renderCatalogo(); })
-            .catch(err => { document.getElementById('catalogoGrid').innerHTML = '<div class="err">Error: ' + err.message + '</div>'; });
-        }
-        if (target === 'pg-alta') {
-          ensureStockLoaded().catch(() => {}); // best-effort, se usa solo para la búsqueda de SKU
-        }
-        if (target === 'pg-alertas') {
-          ensureStockLoaded().then(renderAlertas)
-            .catch(err => { document.getElementById('alertasBody').innerHTML = '<tr><td colspan="6" class="err">Error: ' + err.message + '</td></tr>'; });
-        }
-        if (target === 'pg-historial' && !histLoadedOnce) { histLoadedOnce = true; loadHistorial(); }
-      });
+      if (target === 'pg-stock') {
+        document.getElementById('stockBody').innerHTML = document.getElementById('stockBody').innerHTML || '<tr><td colspan="8" class="muted">Cargando...</td></tr>';
+        ensureStockLoaded().then(() => { fillStockFilterOptions(); renderStockTable(); })
+          .catch(err => { document.getElementById('stockBody').innerHTML = '<tr><td colspan="8" class="err">Error: ' + err.message + '</td></tr>'; });
+      }
+      if (target === 'pg-catalogo') {
+        ensureStockLoaded().then(() => { fillCatalogoFilterOptions(); renderCatalogo(); })
+          .catch(err => { document.getElementById('catalogoGrid').innerHTML = '<div class="err">Error: ' + err.message + '</div>'; });
+      }
+      if (target === 'pg-alta') {
+        ensureStockLoaded().catch(() => {}); // best-effort, se usa solo para la búsqueda de SKU
+      }
+      if (target === 'pg-alertas') {
+        ensureStockLoaded().then(renderAlertas)
+          .catch(err => { document.getElementById('alertasBody').innerHTML = '<tr><td colspan="6" class="err">Error: ' + err.message + '</td></tr>'; });
+      }
+      if (target === 'pg-historial' && !histLoadedOnce) { histLoadedOnce = true; loadHistorial(); }
+    }
+
+    tabButtons.forEach(btn => {
+      btn.addEventListener('click', () => activateTab(btn.getAttribute('data-page')));
+    });
+    document.getElementById('fabAddLine').classList.add('visible'); // Remito es la pestaña inicial
+
+    /* =========================================================
+     * BUSCADOR GLOBAL (Stock/Catálogo + Histórico)
+     * ========================================================= */
+    const globalSearchInput = document.getElementById('globalSearch');
+    const globalSearchResults = document.getElementById('globalSearchResults');
+
+    function runGlobalSearch(q){
+      q = q.trim().toLowerCase();
+      if (!q){ globalSearchResults.style.display = 'none'; return; }
+
+      const productResults = (stockCacheLoaded ? stockData : [])
+        .filter(r => String(r.sku).toLowerCase().includes(q) || String(r.descripcion||'').toLowerCase().includes(q))
+        .slice(0,5)
+        .map(r => ({ type:'product', key:String(r.sku), title: r.sku + ' — ' + (r.descripcion||''), sub: 'Producto · Catálogo' }));
+
+      const remitoResults = histData
+        .filter(rm => String(rm.nroRemito).toLowerCase().includes(q) || String(rm.puntoVenta||'').toLowerCase().includes(q))
+        .slice(0,5)
+        .map(rm => ({ type:'remito', key: rm.nroRemito, title: rm.nroRemito + ' — ' + (rm.puntoVenta||''), sub: 'Remito · ' + (rm.fecha||'') }));
+
+      const items = [...productResults, ...remitoResults];
+      if (!items.length){ globalSearchResults.innerHTML = '<div class="gs-empty">Sin resultados</div>'; globalSearchResults.style.display = 'block'; return; }
+      globalSearchResults.innerHTML = items.map(it => `
+        <div class="gs-item" data-type="${it.type}" data-key="${it.key}">
+          <span class="gs-title">${it.title}</span>
+          <span class="gs-sub">${it.sub}</span>
+        </div>`).join('');
+      globalSearchResults.style.display = 'block';
+    }
+
+    globalSearchInput.addEventListener('input', _debounce(() => {
+      ensureStockLoaded().catch(() => {});
+      if (!histLoadedOnce) { histLoadedOnce = true; loadHistorial(); }
+      runGlobalSearch(globalSearchInput.value);
+    }, 250));
+
+    globalSearchResults.addEventListener('click', (e) => {
+      const item = e.target.closest('.gs-item');
+      if (!item) return;
+      const type = item.dataset.type, key = item.dataset.key;
+      globalSearchResults.style.display = 'none';
+      globalSearchInput.value = '';
+      if (type === 'product') {
+        activateTab('pg-catalogo');
+        ensureStockLoaded().then(() => { fillCatalogoFilterOptions(); renderCatalogo(); openCatalogModal(key); });
+      } else if (type === 'remito') {
+        activateTab('pg-historial');
+        const histSearchEl = document.getElementById('histSearch');
+        histSearchEl.value = key;
+        renderHistorial();
+        const found = document.querySelector('.hist-item');
+        if (found) { found.click(); found.scrollIntoView({ behavior:'smooth', block:'center' }); }
+      }
+    });
+
+    document.addEventListener('click', (e) => {
+      if (!e.target.closest('.global-search-wrap')) globalSearchResults.style.display = 'none';
     });
 
     /* =========================================================
