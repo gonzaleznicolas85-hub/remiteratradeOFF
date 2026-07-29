@@ -94,6 +94,7 @@
     .qty{width:100%;text-align:right}
     .table-scroll{overflow-x:auto;-webkit-overflow-scrolling:touch;border-radius:10px}
     .table-scroll table{min-width:640px}
+    #pg-remito .table-scroll table{min-width:700px}
     @media(max-width:640px){
       #pg-remito .table-scroll{overflow-x:visible;border-radius:0}
       #pg-remito .table-scroll table{min-width:0;width:100%;border-spacing:0}
@@ -136,6 +137,8 @@
     .refresh-row{display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;flex-wrap:wrap;gap:8px}
     .refresh-row .btn{flex:none;width:auto}
     .stock-thumb{width:40px;height:40px;object-fit:cover;border-radius:8px;cursor:pointer;display:block;border:1px solid var(--border)}
+    .remito-thumb{width:40px;height:40px;object-fit:cover;border-radius:8px;display:block;border:1px solid var(--border)}
+    .remito-thumb-empty{width:40px;height:40px;border-radius:8px;background:var(--bg-subtle);border:1px solid var(--border);display:flex;align-items:center;justify-content:center;font-size:16px;color:var(--text-muted)}
     .stock-photo-btn{width:auto;padding:4px 8px;font-size:11px;white-space:nowrap;min-height:32px}
     .catalog-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:12px}
     @media(max-width:480px){ .catalog-grid{grid-template-columns:repeat(2,1fr);gap:8px} }
@@ -308,6 +311,7 @@
         <table>
           <thead>
             <tr>
+              <th>Foto</th>
               <th>SKU (escribí o elegí)</th>
               <th>Descripción</th>
               <th>Tipo</th>
@@ -989,7 +993,7 @@
      */
     function getProductList(){
       if (stockCacheLoaded) {
-        return stockData.map(r => ({ sku: r.sku, descripcion: r.descripcion, tipo: r.tipo, marca: r.marca }));
+        return stockData.map(r => ({ sku: r.sku, descripcion: r.descripcion, tipo: r.tipo, marca: r.marca, imagenUrl: r.imagenUrl, medidas: r.medidas }));
       }
       return PRODUCTS;
     }
@@ -1068,12 +1072,16 @@
 
     function addRow(prefill){
       const tr = document.createElement('tr');
+      const fotoCell = document.createElement('td'); fotoCell.dataset.label = 'Foto';
       const skuCell = document.createElement('td'); skuCell.dataset.label = 'SKU';
       const descCell = document.createElement('td'); descCell.dataset.label = 'Descripción';
       const tipoCell = document.createElement('td'); tipoCell.dataset.label = 'Tipo';
       const marcaCell = document.createElement('td'); marcaCell.dataset.label = 'Marca';
       const qtyCell = document.createElement('td'); qtyCell.dataset.label = 'Cant.';
       const delCell = document.createElement('td');
+
+      const foto = document.createElement('div'); foto.className = 'remito-thumb-empty'; foto.textContent = '📦';
+      fotoCell.appendChild(foto);
 
       const { wrap, input } = createSkuInput();
       skuCell.appendChild(wrap);
@@ -1088,10 +1096,24 @@
       const del = document.createElement('button'); del.textContent='Quitar'; del.className='btn btn-danger'; del.style.width='100%';
       delCell.appendChild(del);
 
-      tr.appendChild(skuCell); tr.appendChild(descCell); tr.appendChild(tipoCell); tr.appendChild(marcaCell); tr.appendChild(qtyCell); tr.appendChild(delCell);
+      tr.appendChild(fotoCell); tr.appendChild(skuCell); tr.appendChild(descCell); tr.appendChild(tipoCell); tr.appendChild(marcaCell); tr.appendChild(qtyCell); tr.appendChild(delCell);
       tbody.appendChild(tr);
 
-      function hydrate(){ const p = findBySku(input.value); if (p) { desc.value=p.descripcion||''; tipo.value=p.tipo||''; marca.value=p.marca||''; } else { desc.value = tipo.value = marca.value = ''; } }
+      function setFoto(url, alt){
+        if (url) {
+          fotoCell.innerHTML = `<img src="${driveThumbUrl(url, 100)}" class="remito-thumb" alt="${alt||''}" loading="lazy" />`;
+        } else {
+          fotoCell.innerHTML = '';
+          const placeholder = document.createElement('div'); placeholder.className = 'remito-thumb-empty'; placeholder.textContent = '📦';
+          fotoCell.appendChild(placeholder);
+        }
+      }
+
+      function hydrate(){
+        const p = findBySku(input.value);
+        if (p) { desc.value=p.descripcion||''; tipo.value=p.tipo||''; marca.value=p.marca||''; setFoto(p.imagenUrl, p.descripcion); }
+        else { desc.value = tipo.value = marca.value = ''; setFoto(''); }
+      }
       input.addEventListener('change', hydrate);
       input.addEventListener('blur', hydrate);
       del.onclick = (e)=>{ e.preventDefault(); tr.remove(); computeTotal(); };
