@@ -28,6 +28,11 @@ const FOLDER_ID_PDF = '1H7YJqkC_nds-U7l5T-DIPA4bLmpnDPEz';
 // dedicada si preferís mantenerlas separadas.
 const FOLDER_ID_IMAGENES = '1H7YJqkC_nds-U7l5T-DIPA4bLmpnDPEz';
 
+// Pedidos de materiales: el Form de esta área guarda las respuestas en OTRA
+// planilla (no en la de STOCK/REMITOS), hay que abrirla aparte por ID.
+const PEDIDOS_SHEET_ID = '1W8xls7GeUj0SJSiTooigl6a3XzH9dzkIG5lh5hHuByI';
+const PEDIDOS_TAB_NAME = 'Pedidos';
+
 /* =========================
  * BRANDING / DISEÑO PDF
  * ========================= */
@@ -188,6 +193,7 @@ function getStockMap_(sheetStock) {
     idxEntregado:    stockColIndex_(headers, ['entregado']),
     idxStockActual:  stockColIndex_(headers, ['stockactual']),
     idxImagen:       stockColIndex_(headers, ['imagen']),
+    idxMedidas:      stockColIndex_(headers, ['medida']),
     lastRow: lastRow,
     lastCol: lastCol
   };
@@ -205,6 +211,22 @@ function ensureImagenUrlHeader_(shStock) {
   if (colIndex === -1) {
     colIndex = header.length;
     shStock.getRange(1, colIndex + 1).setValue('ImagenURL');
+  }
+  return colIndex + 1; // 1-based
+}
+
+/**
+ * Asegura que exista la columna Medidas en STOCK y devuelve su índice (1-based).
+ * Mismo criterio que ensureImagenUrlHeader_: si no existe, la agrega al final.
+ */
+function ensureMedidasHeader_(shStock) {
+  const lastCol = Math.max(1, shStock.getLastColumn());
+  const header  = shStock.getRange(1,1,1,lastCol).getValues()[0];
+
+  let colIndex = stockColIndex_(header, ['medida']); // 0-based
+  if (colIndex === -1) {
+    colIndex = header.length;
+    shStock.getRange(1, colIndex + 1).setValue('Medidas');
   }
   return colIndex + 1; // 1-based
 }
@@ -547,6 +569,10 @@ function doGet(e) {
     return handleGetHistorial_(ss);
   }
 
+  if (action === 'pedidos') {
+    return handleGetPedidos_(ss);
+  }
+
   return jsonOut({ ok:false, error:'Acción desconocida: ' + action }, 400);
 }
 
@@ -569,7 +595,8 @@ function handleGetStock_(ss) {
       stockInicial: map.idxStockInicial >= 0 ? Number(r[map.idxStockInicial] || 0) : 0,
       entregado:    map.idxEntregado    >= 0 ? Number(r[map.idxEntregado] || 0) : 0,
       stockActual:  map.idxStockActual  >= 0 ? Number(r[map.idxStockActual] || 0) : 0,
-      imagenUrl:    map.idxImagen       >= 0 ? String(r[map.idxImagen] || '') : ''
+      imagenUrl:    map.idxImagen       >= 0 ? String(r[map.idxImagen] || '') : '',
+      medidas:      map.idxMedidas      >= 0 ? String(r[map.idxMedidas] || '') : ''
     }));
 
   return jsonOut({ ok:true, headerStockInicial: map.headers[map.idxStockInicial] || 'StockInicial', rows: rows });
@@ -630,6 +657,69 @@ function handleGetHistorial_(ss) {
   remitos.sort((a, b) => String(b.timestamp).localeCompare(String(a.timestamp)));
 
   return jsonOut({ ok:true, remitos: remitos });
+}
+
+/* ==========================================================
+ * PEDIDOS DEL DÍA — respuestas del Google Form de pedido de materiales
+ * Viven en una planilla APARTE (PEDIDOS_SHEET_ID), pestaña PEDIDOS_TAB_NAME.
+ * Columnas 0 (timestamp) y 9 (estado) del Form vienen ambas tituladas
+ * "Columna 1" (mismo nombre repetido), así que esas dos se leen por
+ * posición fija; el resto se resuelve por nombre de encabezado.
+ * ========================================================== */
+function handleGetPedidos_() {
+  let sh;
+  try {
+    sh = SpreadsheetApp.openById(PEDIDOS_SHEET_ID).getSheetByName(PEDIDOS_TAB_NAME);
+  } catch (eOpen) {
+    return jsonOut({ ok:false, error:'No se pudo abrir la planilla de pedidos: ' + eOpen }, 500);
+  }
+  if (!sh) return jsonOut({ ok:false, error:'No existe la hoja ' + PEDIDOS_TAB_NAME }, 500);
+
+  const lastRow = sh.getLastRow();
+  const lastCol = sh.getLastColumn();
+  if (lastRow < 2) return jsonOut({ ok:true, pedidos: [] });
+
+  const headers = sh.getRange(1,1,1,lastCol).getValues()[0];
+  const idx = {
+    timestamp:   0,
+    solicitante: stockColIndex_(headers, ['repositor']),
+    cliente:     stockColIndex_(headers, ['supermercado']),
+    direccion:   stockColIndex_(headers, ['direccion','dirección']),
+    pedido:      stockColIndex_(headers, ['tipo de material']),
+    marca:       stockColIndex_(headers, ['marca']),
+    cantidad:    stockColIndex_(headers, ['cantidad']),
+    contacto:    stockColIndex_(headers, ['telefono','teléfono']),
+    ciudad:      stockColIndex_(headers, ['ciudad']),
+    estado:      9,
+    observacion: stockColIndex_(headers, ['observacion','observación'])
+  };
+
+  const vals = sh.getRange(2, 1, lastRow - 1, lastCol).getValues();
+  const pedidos = vals.map((r, i) => {
+    const tsDate = toJsDate_(r[idx.timestamp]);
+    const marca = idx.marca >= 0 ? String(r[idx.marca] || '') : '';
+    const tipoMaterial = idx.pedido >= 0 ? String(r[idx.pedido] || '') : '';
+    return {
+      id: 'PED' + (i + 2),
+      timestamp: tsDate ? tsDate.toISOString() : '',
+      fecha: tsDate ? Utilities.formatDate(tsDate, Session.getScriptTimeZone(), 'yyyy-MM-dd') : '',
+      canal: '',
+      solicitante: idx.solicitante >= 0 ? String(r[idx.solicitante] || '') : '',
+      cliente: idx.cliente >= 0 ? String(r[idx.cliente] || '') : '',
+      codigoCliente: '',
+      pedido: tipoMaterial + (marca ? ' — ' + marca : ''),
+      cantidad: idx.cantidad >= 0 ? String(r[idx.cantidad] || '') : '',
+      contacto: idx.contacto >= 0 ? String(r[idx.contacto] || '') : '',
+      direccion: idx.direccion >= 0 ? String(r[idx.direccion] || '') : '',
+      ciudad: idx.ciudad >= 0 ? String(r[idx.ciudad] || '') : '',
+      estado: idx.estado >= 0 ? String(r[idx.estado] || '') : '',
+      observacion: idx.observacion >= 0 ? String(r[idx.observacion] || '') : ''
+    };
+  }).filter(p => p.solicitante || p.pedido || p.cliente);
+
+  pedidos.sort((a, b) => String(b.timestamp || b.fecha).localeCompare(String(a.timestamp || a.fecha)));
+
+  return jsonOut({ ok:true, pedidos: pedidos });
 }
 
 function doPost(e) {
@@ -838,7 +928,13 @@ function handleAddProducto_(shStock, producto) {
     }
   }
 
-  return jsonOut({ ok:true, sku: sku, row: targetRow, imagenUrl: imagenUrl });
+  const medidas = String(producto.medidas || '').trim();
+  if (medidas) {
+    const colMedidas = ensureMedidasHeader_(shStock);
+    shStock.getRange(targetRow, colMedidas).setValue(medidas);
+  }
+
+  return jsonOut({ ok:true, sku: sku, row: targetRow, imagenUrl: imagenUrl, medidas: medidas });
 }
 
 /* ==========================================================

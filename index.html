@@ -170,6 +170,23 @@
     .modal-title{font-size:18px;font-weight:700;margin:4px 0}
     .modal-meta{color:var(--text-muted);font-size:13px;margin-bottom:8px}
     .modal-qty{font-size:14px;font-weight:600}
+    .modal-counter{font-size:11px;color:var(--text-muted);margin-bottom:4px}
+    .modal-nav{position:absolute;top:50%;transform:translateY(-50%);width:40px;height:40px;min-height:40px;border-radius:999px;background:rgba(0,0,0,.55);color:#fff;border:none;font-size:24px;line-height:1;display:flex;align-items:center;justify-content:center;z-index:3;padding:0;cursor:pointer}
+    .modal-nav-prev{left:10px}
+    .modal-nav-next{right:10px}
+    .catalog-medidas{font-size:12px;color:var(--text-muted);margin-top:2px}
+
+    /* Pedidos del día */
+    .pedido-card{background:var(--bg-elevated);border:1px solid var(--border);border-radius:10px;padding:10px 12px;margin-bottom:8px}
+    .pedido-head{display:flex;justify-content:space-between;align-items:flex-start;gap:8px;flex-wrap:wrap}
+    .pedido-cliente{font-weight:700;font-size:14px}
+    .pedido-fecha{font-size:11px;color:var(--text-muted);white-space:nowrap}
+    .pedido-detalle{font-size:13px;margin-top:4px}
+    .pedido-meta{font-size:12px;color:var(--text-muted);margin-top:4px}
+    .pedido-estado{display:inline-block;border-radius:999px;padding:2px 9px;font-size:11px;font-weight:700;white-space:nowrap}
+    .pedido-estado-ok{background:var(--accent-soft);color:var(--accent-soft-text)}
+    .pedido-estado-bad{background:rgba(239,68,68,.15);color:var(--danger)}
+    .pedido-estado-neutral{background:var(--bg-subtle);color:var(--text-muted)}
 
     /* Buscador global */
     .global-search-wrap{position:relative;max-width:980px;margin:8px auto 0;padding:0 16px;padding-left:calc(16px + env(safe-area-inset-left));padding-right:calc(16px + env(safe-area-inset-right))}
@@ -231,6 +248,7 @@
     <button type="button" data-page="pg-catalogo">Catálogo</button>
     <button type="button" data-page="pg-alertas">🔔 Alertas <span id="alertBadge" class="nav-badge" style="display:none">0</span></button>
     <button type="button" data-page="pg-historial">Histórico</button>
+    <button type="button" data-page="pg-pedidos">📋 Pedidos</button>
   </nav>
   <div id="monthlyAlertBanner" class="alert-banner" style="display:none">
     <div class="alert-banner-text"></div>
@@ -412,6 +430,10 @@
         </div>
         <div class="row" style="margin-top:10px">
           <div>
+            <label>Medidas (opcional)</label>
+            <input type="text" id="altaMedidas" placeholder="Ej: 40x30x15 cm" />
+          </div>
+          <div>
             <label>Foto (opcional)</label>
             <input type="file" id="altaNuevoFile" accept="image/*" capture="environment" />
           </div>
@@ -511,20 +533,51 @@
       </section>
     </section>
 
+    <section id="pg-pedidos" class="page">
+      <section class="card">
+        <div class="refresh-row">
+          <div class="note" style="margin:0">Pedidos de materiales recibidos por el Google Form.</div>
+          <div class="actions" style="width:auto">
+            <button class="btn btn-ghost" id="pedidosClearFilters">Limpiar filtros</button>
+            <button class="btn btn-ghost" id="pedidosHoy" style="width:auto">Solo hoy</button>
+            <button class="btn btn-ghost" id="pedidosRefresh" style="width:auto">↻ Actualizar</button>
+          </div>
+        </div>
+        <div class="filters">
+          <input type="text" id="pedidosSearch" placeholder="Buscar cliente, solicitante, material..." />
+          <select id="pedidosEstado"><option value="">Estado (todos)</option></select>
+          <div>
+            <label class="note" style="margin:0 0 4px">Desde</label>
+            <input type="date" id="pedidosFechaDesde" />
+          </div>
+          <div>
+            <label class="note" style="margin:0 0 4px">Hasta</label>
+            <input type="date" id="pedidosFechaHasta" />
+          </div>
+        </div>
+        <div class="note" id="pedidosCount" style="margin-bottom:8px"></div>
+        <div id="pedidosList"><div class="muted">Cargando...</div></div>
+      </section>
+    </section>
+
     <footer>Trade Marketing</footer>
   </main>
 
   <div id="catalogModal" class="modal-overlay" style="display:none" role="dialog" aria-modal="true" aria-labelledby="catalogModalTitle">
     <div class="modal-content">
       <button type="button" id="catalogModalClose" class="modal-close" aria-label="Cerrar">✕</button>
+      <button type="button" id="catalogModalPrev" class="modal-nav modal-nav-prev" aria-label="Producto anterior" style="display:none">‹</button>
+      <button type="button" id="catalogModalNext" class="modal-nav modal-nav-next" aria-label="Producto siguiente" style="display:none">›</button>
       <div class="modal-img-wrap" id="catalogModalImgWrap">
         <img id="catalogModalImg" src="" alt="" style="display:none" />
         <div id="catalogModalNoImg" class="modal-noimg" style="display:none">📦</div>
       </div>
       <div class="modal-body">
+        <div class="modal-counter" id="catalogModalCounter" style="display:none"></div>
         <div class="modal-sku" id="catalogModalSku"></div>
         <div class="modal-title" id="catalogModalTitle"></div>
         <div class="modal-meta" id="catalogModalMeta"></div>
+        <div class="modal-meta" id="catalogModalMedidas"></div>
         <div class="modal-qty" id="catalogModalQty"></div>
         <div class="note" id="catalogModalZoomHint" style="margin-top:8px"></div>
       </div>
@@ -1185,10 +1238,11 @@
     function _debounce(fn, ms){ let t; return function(...args){ clearTimeout(t); t=setTimeout(()=>fn.apply(this,args), ms); }; }
 
     const tabButtons = document.querySelectorAll('nav.tabs button');
-    const pages = { 'pg-remito': null, 'pg-stock': null, 'pg-alta': null, 'pg-catalogo': null, 'pg-alertas': null, 'pg-historial': null };
+    const pages = { 'pg-remito': null, 'pg-stock': null, 'pg-alta': null, 'pg-catalogo': null, 'pg-alertas': null, 'pg-historial': null, 'pg-pedidos': null };
     Object.keys(pages).forEach(id => pages[id] = document.getElementById(id));
 
     let histLoadedOnce = false;
+    let pedidosLoadedOnce = false;
 
     function activateTab(target){
       tabButtons.forEach(b => { b.removeAttribute('aria-current'); if (b.getAttribute('data-page') === target) b.setAttribute('aria-current','page'); });
@@ -1212,6 +1266,7 @@
           .catch(err => { document.getElementById('alertasBody').innerHTML = '<tr><td colspan="6" class="err">Error: ' + err.message + '</td></tr>'; });
       }
       if (target === 'pg-historial' && !histLoadedOnce) { histLoadedOnce = true; loadHistorial(); }
+      if (target === 'pg-pedidos' && !pedidosLoadedOnce) { pedidosLoadedOnce = true; loadPedidos(); }
     }
 
     tabButtons.forEach(btn => {
@@ -1465,7 +1520,9 @@
         return true;
       });
 
-      if (!filtered.length){ grid.innerHTML = '<div class="muted">Sin resultados.</div>'; countEl.textContent = '0 productos'; return; }
+      if (!filtered.length){ grid.innerHTML = '<div class="muted">Sin resultados.</div>'; countEl.textContent = '0 productos'; catalogModalList = []; return; }
+
+      catalogModalList = filtered.map(r => r.sku); // orden visible actual, para navegar con flechas/swipe en la ficha
 
       grid.innerHTML = filtered.map(r => `
         <div class="catalog-card" data-sku="${r.sku}">
@@ -1473,6 +1530,7 @@
           <div class="catalog-body">
             <div class="catalog-sku">${r.sku}${r.marca ? ' · ' + r.marca : ''}</div>
             <div class="catalog-desc">${r.descripcion || '(sin descripción)'}</div>
+            ${r.medidas ? `<div class="catalog-medidas">📐 ${r.medidas}</div>` : ''}
             <div class="catalog-qty">Cantidad real: <strong class="${r.stockActual<=5?'low':''}">${r.stockActual}</strong></div>
           </div>
         </div>
@@ -1494,14 +1552,18 @@
       renderCatalogo();
     };
 
-    /* Ficha de producto (modal) con zoom sobre la foto */
+    /* Ficha de producto (modal) con zoom sobre la foto y navegación entre fichas */
     const catalogModal = document.getElementById('catalogModal');
     const catalogModalImgWrap = document.getElementById('catalogModalImgWrap');
     const catalogModalImg = document.getElementById('catalogModalImg');
 
+    let catalogModalList = []; // SKUs en el orden visible del grid filtrado (se llena en renderCatalogo)
+    let catalogModalSku = null;
+
     function openCatalogModal(sku){
       const r = stockData.find(x => x.sku === sku);
       if (!r) return;
+      catalogModalSku = sku;
 
       catalogModalImgWrap.classList.remove('zoomed');
       const noImg = document.getElementById('catalogModalNoImg');
@@ -1521,12 +1583,54 @@
       document.getElementById('catalogModalSku').textContent = r.sku + (r.marca ? ' · ' + r.marca : '');
       document.getElementById('catalogModalTitle').textContent = r.descripcion || '(sin descripción)';
       document.getElementById('catalogModalMeta').textContent = r.tipo || '';
+      document.getElementById('catalogModalMedidas').textContent = r.medidas ? '📐 Medidas: ' + r.medidas : '';
       document.getElementById('catalogModalQty').innerHTML =
         'Cantidad real: <strong class="' + (r.stockActual <= 5 ? 'low' : '') + '">' + r.stockActual + '</strong>';
+
+      const idx = catalogModalList.indexOf(sku);
+      const hasNav = catalogModalList.length > 1;
+      document.getElementById('catalogModalPrev').style.display = hasNav ? 'flex' : 'none';
+      document.getElementById('catalogModalNext').style.display = hasNav ? 'flex' : 'none';
+      if (hasNav) document.getElementById('catalogModalCounter').textContent = (idx + 1) + ' / ' + catalogModalList.length;
+      document.getElementById('catalogModalCounter').style.display = hasNav ? 'block' : 'none';
 
       catalogModal.style.display = 'flex';
       document.body.style.overflow = 'hidden';
     }
+
+    function catalogModalStep(dir){
+      if (!catalogModalList.length) return;
+      const idx = catalogModalList.indexOf(catalogModalSku);
+      if (idx === -1) return;
+      const nextIdx = (idx + dir + catalogModalList.length) % catalogModalList.length;
+      openCatalogModal(catalogModalList[nextIdx]);
+    }
+
+    document.getElementById('catalogModalPrev').onclick = (e) => { e.stopPropagation(); catalogModalStep(-1); };
+    document.getElementById('catalogModalNext').onclick = (e) => { e.stopPropagation(); catalogModalStep(1); };
+
+    document.addEventListener('keydown', (e) => {
+      if (catalogModal.style.display !== 'flex') return;
+      if (e.key === 'ArrowLeft') catalogModalStep(-1);
+      if (e.key === 'ArrowRight') catalogModalStep(1);
+      if (e.key === 'Escape') closeCatalogModal();
+    });
+
+    // Swipe táctil sobre la foto para navegar entre fichas en el celular
+    let catalogSwipeStartX = null, catalogSwipeStartY = null;
+    catalogModalImgWrap.addEventListener('touchstart', (e) => {
+      if (catalogModalImgWrap.classList.contains('zoomed')) return; // con zoom, el gesto es para hacer scroll de la imagen
+      const t = e.changedTouches[0];
+      catalogSwipeStartX = t.clientX; catalogSwipeStartY = t.clientY;
+    }, { passive:true });
+    catalogModalImgWrap.addEventListener('touchend', (e) => {
+      if (catalogSwipeStartX === null) return;
+      const t = e.changedTouches[0];
+      const dx = t.clientX - catalogSwipeStartX;
+      const dy = t.clientY - catalogSwipeStartY;
+      catalogSwipeStartX = null; catalogSwipeStartY = null;
+      if (Math.abs(dx) > 50 && Math.abs(dx) > Math.abs(dy) * 1.5) catalogModalStep(dx < 0 ? 1 : -1);
+    }, { passive:true });
 
     function closeCatalogModal(){
       catalogModal.style.display = 'none';
@@ -1730,12 +1834,13 @@
       const tipo = document.getElementById('altaTipo').value.trim();
       const marca = document.getElementById('altaMarca').value.trim();
       const stockInicial = Number(document.getElementById('altaStockInicial').value || 0);
+      const medidas = document.getElementById('altaMedidas').value.trim();
       const file = document.getElementById('altaNuevoFile').files[0];
 
       if (!descripcion) { altaMsg.textContent = 'Completá al menos la Descripción.'; altaMsg.className = 'err'; return; }
 
       try {
-        const producto = { descripcion, tipo, marca, stockInicial };
+        const producto = { descripcion, tipo, marca, stockInicial, medidas };
         if (!altaModoAutoSku && skuManual) producto.sku = skuManual; // si no, el backend genera el SKU automáticamente
         if (file) { producto.imagenBase64 = await fileToCompressedBase64(file); producto.imagenName = (skuManual || 'nuevo') + '.jpg'; }
 
@@ -1744,7 +1849,7 @@
         if (!json.ok) { altaMsg.textContent = '❌ ' + (json.error || 'Error'); altaMsg.className = 'err'; return; }
 
         altaMsg.textContent = '✅ Producto ' + json.sku + ' agregado.'; altaMsg.className = 'ok';
-        stockData.push({ sku: json.sku, descripcion, tipo, marca, stockInicial, entregado: 0, stockActual: stockInicial, imagenUrl: json.imagenUrl || '' });
+        stockData.push({ sku: json.sku, descripcion, tipo, marca, stockInicial, entregado: 0, stockActual: stockInicial, imagenUrl: json.imagenUrl || '', medidas: json.medidas || medidas || '' });
         refreshAllSkuDatalists(); // así el Remito ya puede usar este SKU nuevo sin recargar la página
 
         altaModoAutoSku = false;
@@ -1753,6 +1858,7 @@
         document.getElementById('altaTipo').value = '';
         document.getElementById('altaMarca').value = '';
         document.getElementById('altaStockInicial').value = '0';
+        document.getElementById('altaMedidas').value = '';
         document.getElementById('altaNuevoFile').value = '';
         altaBuscarSku();
       } catch (err) {
@@ -1875,6 +1981,106 @@
       document.getElementById('histFechaHasta').value = '';
       document.getElementById('histOrden').value = 'desc';
       renderHistorial();
+    };
+
+    /* =========================================================
+     * PEDIDOS DEL DÍA (respuestas del Google Form de materiales)
+     * ========================================================= */
+    let pedidosData = [];
+    let _pedidosLoading = false;
+
+    async function loadPedidos(){
+      if (_pedidosLoading) return;
+      _pedidosLoading = true;
+      const list = document.getElementById('pedidosList');
+      list.innerHTML = '<div class="muted">Cargando...</div>';
+      try {
+        const res = await fetch(PROXY_URL + '?action=pedidos');
+        const json = await res.json();
+        if (!json.ok) { list.innerHTML = '<div class="err">Error: ' + (json.error||'desconocido') + '</div>'; return; }
+        pedidosData = json.pedidos || [];
+        fillPedidosEstadoOptions();
+        renderPedidos();
+      } catch (err) {
+        list.innerHTML = '<div class="err">Error de red: ' + err.message + '</div>';
+      } finally {
+        _pedidosLoading = false;
+      }
+    }
+
+    function fillPedidosEstadoOptions(){
+      const sel = document.getElementById('pedidosEstado');
+      const estados = [...new Set(pedidosData.map(p => p.estado).filter(Boolean))].sort();
+      const prev = sel.value;
+      sel.innerHTML = '<option value="">Estado (todos)</option>' + estados.map(e => `<option value="${e}">${e}</option>`).join('');
+      sel.value = prev;
+    }
+
+    function pedidoEstadoClass(estado){
+      const e = String(estado || '').toLowerCase();
+      if (!e) return 'pedido-estado-neutral';
+      if (e.includes('entreg')) return 'pedido-estado-ok';
+      if (e.includes('no stock') || e.includes('sin stock') || e.includes('pendiente')) return 'pedido-estado-bad';
+      return 'pedido-estado-neutral';
+    }
+
+    function renderPedidos(){
+      const list = document.getElementById('pedidosList');
+      const countEl = document.getElementById('pedidosCount');
+      const q = document.getElementById('pedidosSearch').value.trim().toLowerCase();
+      const estado = document.getElementById('pedidosEstado').value;
+      const desde = document.getElementById('pedidosFechaDesde').value;
+      const hasta = document.getElementById('pedidosFechaHasta').value;
+
+      const filtered = pedidosData.filter(p => {
+        if (q && !((p.cliente||'').toLowerCase().includes(q) || (p.solicitante||'').toLowerCase().includes(q) || (p.pedido||'').toLowerCase().includes(q) || (p.direccion||'').toLowerCase().includes(q))) return false;
+        if (estado && p.estado !== estado) return false;
+        if (desde && p.fecha < desde) return false;
+        if (hasta && p.fecha > hasta) return false;
+        return true;
+      });
+
+      countEl.textContent = filtered.length + ' de ' + pedidosData.length + ' pedidos';
+
+      if (!filtered.length){ list.innerHTML = '<div class="muted">Sin resultados.</div>'; return; }
+
+      list.innerHTML = filtered.map(p => `
+        <div class="pedido-card">
+          <div class="pedido-head">
+            <div class="pedido-cliente">${p.cliente || p.solicitante || '(sin nombre)'}</div>
+            <div style="display:flex;align-items:center;gap:8px">
+              ${p.estado ? `<span class="pedido-estado ${pedidoEstadoClass(p.estado)}">${p.estado}</span>` : ''}
+              <span class="pedido-fecha">${p.fecha || ''}</span>
+            </div>
+          </div>
+          <div class="pedido-detalle">${p.pedido || '(sin detalle)'}${p.cantidad ? ' · Cant: ' + p.cantidad : ''}</div>
+          <div class="pedido-meta">
+            ${p.solicitante && p.cliente ? 'Solicitante: ' + p.solicitante + ' · ' : ''}${p.canal ? 'Canal: ' + p.canal + ' · ' : ''}${p.direccion ? p.direccion + ' · ' : ''}${p.ciudad ? p.ciudad + ' · ' : ''}${p.contacto ? '📞 ' + p.contacto : ''}
+          </div>
+          ${p.observacion ? `<div class="pedido-meta">📝 ${p.observacion}</div>` : ''}
+        </div>
+      `).join('');
+    }
+
+    document.getElementById('pedidosSearch').addEventListener('input', _debounce(renderPedidos, 200));
+    document.getElementById('pedidosEstado').addEventListener('change', renderPedidos);
+    document.getElementById('pedidosFechaDesde').addEventListener('change', renderPedidos);
+    document.getElementById('pedidosFechaHasta').addEventListener('change', renderPedidos);
+    document.getElementById('pedidosRefresh').onclick = (e) => { e.preventDefault(); loadPedidos(); };
+    document.getElementById('pedidosHoy').onclick = (e) => {
+      e.preventDefault();
+      const hoy = new Date().toISOString().slice(0,10);
+      document.getElementById('pedidosFechaDesde').value = hoy;
+      document.getElementById('pedidosFechaHasta').value = hoy;
+      renderPedidos();
+    };
+    document.getElementById('pedidosClearFilters').onclick = (e) => {
+      e.preventDefault();
+      document.getElementById('pedidosSearch').value = '';
+      document.getElementById('pedidosEstado').value = '';
+      document.getElementById('pedidosFechaDesde').value = '';
+      document.getElementById('pedidosFechaHasta').value = '';
+      renderPedidos();
     };
 
     /* =========================================================
