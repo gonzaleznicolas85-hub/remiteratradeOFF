@@ -1645,8 +1645,13 @@
         const partes = [];
         if (cantidad > 0) partes.push('se sumaron ' + cantidad + ' unidades');
         if (medidas) partes.push('medidas actualizadas');
-        if (file) partes.push('foto actualizada');
-        altaMsg.textContent = '✅ SKU ' + sku + ': ' + (partes.join(', ') || 'actualizado') + '.'; altaMsg.className = 'ok';
+        if (file && json.imagenUrl) partes.push('foto actualizada');
+        if (file && !json.imagenUrl) {
+          altaMsg.textContent = '⚠️ SKU ' + sku + ': ' + (partes.join(', ') ? partes.join(', ') + ', pero ' : '') + 'la foto no se pudo subir' + (json.imagenError ? ' (' + json.imagenError + ')' : '') + '.';
+          altaMsg.className = 'err';
+        } else {
+          altaMsg.textContent = '✅ SKU ' + sku + ': ' + (partes.join(', ') || 'actualizado') + '.'; altaMsg.className = 'ok';
+        }
 
         const row = stockData.find(r => r.sku === sku);
         if (row) {
@@ -1685,7 +1690,12 @@
         const json = await fetchJsonWithRetry(PROXY_URL, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ action: 'addProducto', producto }) });
         if (!json.ok) { altaMsg.textContent = '❌ ' + (json.error || 'Error'); altaMsg.className = 'err'; return; }
 
-        altaMsg.textContent = '✅ Producto ' + json.sku + ' agregado.'; altaMsg.className = 'ok';
+        if (file && !json.imagenUrl) {
+          altaMsg.textContent = '⚠️ Producto ' + json.sku + ' agregado, pero la foto no se pudo subir' + (json.imagenError ? ' (' + json.imagenError + ')' : '') + '.';
+          altaMsg.className = 'err';
+        } else {
+          altaMsg.textContent = '✅ Producto ' + json.sku + ' agregado.'; altaMsg.className = 'ok';
+        }
         stockData.push({ sku: json.sku, descripcion, tipo, marca, stockInicial, entregado: 0, stockActual: stockInicial, imagenUrl: json.imagenUrl || '', medidas: json.medidas || medidas || '' });
         refreshAllSkuDatalists(); // así el Remito ya puede usar este SKU nuevo sin recargar la página
 

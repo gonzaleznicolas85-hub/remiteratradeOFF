@@ -1019,12 +1019,14 @@ function handleAddProducto_(shStock, producto) {
   shStock.getRange(targetRow, 1, 1, map.lastCol).setValues([newRow]);
 
   let imagenUrl = '';
+  let imagenError = '';
   if (producto.imagenBase64) {
     try {
       imagenUrl = saveImagenToDrive_(producto.imagenBase64, producto.imagenName || ('sku_' + sku + '.jpg'));
       const colImagen = ensureImagenUrlHeader_(shStock);
       shStock.getRange(targetRow, colImagen).setValue(imagenUrl);
     } catch (eImg) {
+      imagenError = String(eImg);
       Logger.log('Error subiendo imagen para ' + sku + ': ' + eImg);
     }
   }
@@ -1035,7 +1037,7 @@ function handleAddProducto_(shStock, producto) {
     shStock.getRange(targetRow, colMedidas).setValue(medidas);
   }
 
-  return jsonOut({ ok:true, sku: sku, row: targetRow, imagenUrl: imagenUrl, medidas: medidas });
+  return jsonOut({ ok:true, sku: sku, row: targetRow, imagenUrl: imagenUrl, imagenError: imagenError, medidas: medidas });
 }
 
 /* ==========================================================
@@ -1096,12 +1098,14 @@ function handleSumarStock_(shStock, data) {
   }
 
   let imagenUrl = '';
+  let imagenError = '';
   if (data.imagenBase64) {
     try {
       imagenUrl = saveImagenToDrive_(data.imagenBase64, data.imagenName || ('sku_' + sku + '.jpg'));
       const colImagen = ensureImagenUrlHeader_(shStock);
       shStock.getRange(row, colImagen).setValue(imagenUrl);
     } catch (eImg) {
+      imagenError = String(eImg);
       Logger.log('Error subiendo imagen (sumarStock) ' + sku + ': ' + eImg);
     }
   }
@@ -1111,5 +1115,5 @@ function handleSumarStock_(shStock, data) {
     shStock.getRange(row, colMedidas).setValue(medidas);
   }
 
-  return jsonOut({ ok:true, sku: sku, row: row, imagenUrl: imagenUrl, medidas: medidas });
+  return jsonOut({ ok:true, sku: sku, row: row, imagenUrl: imagenUrl, imagenError: imagenError, medidas: medidas });
 }
