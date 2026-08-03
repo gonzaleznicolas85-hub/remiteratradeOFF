@@ -644,6 +644,30 @@
     const PRODUCTS = []; // este clon no tiene catálogo estático propio: mientras el stock real no cargó, no se sugiere nada (evita mostrar SKUs de otra área)
     const PROXY_URL = "/.netlify/functions/appscript-proxy";
 
+    /**
+     * fetch + parseo JSON con reintentos. Apps Script a veces tarda mucho
+     * (hoja grande) y devuelve una página de timeout de Google en vez de
+     * JSON — sobre todo en subida de fotos (Sheets + Drive en la misma
+     * llamada). Reintentar suele alcanzar: en pruebas, 2 de cada 3 fallos
+     * se resuelven solos en el segundo o tercer intento.
+     */
+    async function fetchJsonWithRetry(url, options, attempts){
+      attempts = attempts || 3;
+      let lastErr;
+      for (let i = 0; i < attempts; i++){
+        try {
+          const res = await fetch(url, options);
+          const text = await res.text();
+          try { return JSON.parse(text); }
+          catch (eParse) { throw new Error('El servidor tardó demasiado en responder (timeout de Apps Script)'); }
+        } catch (err) {
+          lastErr = err;
+          if (i < attempts - 1) await new Promise(r => setTimeout(r, 1500 * (i + 1)));
+        }
+      }
+      throw lastErr;
+    }
+
     // Declarados acá arriba (y no más abajo, donde vive el resto de la lógica de Stock)
     // porque el autocompletado de SKU del Remito los necesita desde el primer renglón,
     // que se crea apenas carga la página.
@@ -1276,12 +1300,11 @@
     async function subirFotoParaSku(sku, file){
       try {
         const base64 = await fileToCompressedBase64(file);
-        const res = await fetch(PROXY_URL, {
+        const json = await fetchJsonWithRetry(PROXY_URL, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ action: 'uploadImagen', sku, imagenBase64: base64, imagenName: sku + '.jpg' })
         });
-        const json = await res.json();
         if (!json.ok) { alert('❌ ' + (json.error || 'No se pudo subir la foto')); return; }
         const row = stockData.find(r => r.sku === sku);
         if (row) row.imagenUrl = json.imagenUrl;
@@ -1616,8 +1639,7 @@
         if (file) payload.imagenBase64 = await fileToCompressedBase64(file);
         if (file) payload.imagenName = sku + '.jpg';
 
-        const res = await fetch(PROXY_URL, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) });
-        const json = await res.json();
+        const json = await fetchJsonWithRetry(PROXY_URL, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) });
         if (!json.ok) { altaMsg.textContent = '❌ ' + (json.error || 'Error'); altaMsg.className = 'err'; return; }
 
         const partes = [];
@@ -1660,8 +1682,7 @@
         if (!altaModoAutoSku && skuManual) producto.sku = skuManual; // si no, el backend genera el SKU automáticamente
         if (file) { producto.imagenBase64 = await fileToCompressedBase64(file); producto.imagenName = (skuManual || 'nuevo') + '.jpg'; }
 
-        const res = await fetch(PROXY_URL, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ action: 'addProducto', producto }) });
-        const json = await res.json();
+        const json = await fetchJsonWithRetry(PROXY_URL, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ action: 'addProducto', producto }) });
         if (!json.ok) { altaMsg.textContent = '❌ ' + (json.error || 'Error'); altaMsg.className = 'err'; return; }
 
         altaMsg.textContent = '✅ Producto ' + json.sku + ' agregado.'; altaMsg.className = 'ok';
