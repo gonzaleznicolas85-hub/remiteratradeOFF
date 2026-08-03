@@ -296,6 +296,36 @@ function ensurePdfUrlHeader_(shRemitos) {
 }
 
 /**
+ * Reemplaza el PDF de un remito YA CREADO (nuevo modelo con plantilla,
+ * armado en el navegador una vez que se conoce el Nº de remito real).
+ * Busca la fila por NroRemito (columna A) y pisa PDF_URL con el nuevo archivo.
+ */
+function handleAttachPdf_(shRemitos, data) {
+  const nro = String(data.nroRemito || '').trim();
+  const pdfBase64 = data.pdfBase64 || '';
+  const pdfName = data.pdfName || ('Remito_' + nro + '.pdf');
+
+  if (!nro) return jsonOut({ ok:false, error:'Falta nroRemito' }, 400);
+  if (!pdfBase64) return jsonOut({ ok:false, error:'Falta pdfBase64' }, 400);
+
+  const last = shRemitos.getLastRow();
+  let row = -1;
+  if (last >= 2) {
+    const vals = shRemitos.getRange(2, 1, last - 1, 1).getValues();
+    for (let i = 0; i < vals.length; i++) {
+      if (String(vals[i][0]).trim() === nro) { row = i + 2; break; }
+    }
+  }
+  if (row === -1) return jsonOut({ ok:false, error:'Remito no encontrado: ' + nro }, 404);
+
+  const url = savePdfToDrive_(pdfBase64, pdfName);
+  const colPdf = ensurePdfUrlHeader_(shRemitos);
+  shRemitos.getRange(row, colPdf).setValue(url);
+
+  return jsonOut({ ok:true, nroRemito: nro, pdfUrl: url });
+}
+
+/**
  * Busca la última fila de un remito por Fecha + PuntoVenta + Usuario
  * usado en modo soloPdf
  */
@@ -825,6 +855,10 @@ function doPost(e) {
       return handleUpdateEstadoPedido_(data);
     }
 
+    if (action === 'attachPdf') {
+      return handleAttachPdf_(shRemitos, data);
+    }
+
     const header    = data.header || {};
     const lines     = Array.isArray(data.lines) ? data.lines : [];
     const pdfBase64 = data.pdfBase64 || '';
@@ -926,7 +960,10 @@ function doPost(e) {
     shDet.getRange(shDet.getLastRow() + 1, 1, vr.length, 6).setValues(vr);
 
     /* -------------------------
-     * GENERAR PDF AUTOMÁTICO
+     * PDF: si viene en la misma llamada, se guarda acá. Si no, el front
+     * arma el PDF con el nuevo modelo (plantilla) una vez que ya conoce
+     * el nroRemito real, y lo adjunta aparte con action:'attachPdf'.
+     * Ya no se autogenera el PDF viejo (Google Docs) en este paso.
      * ------------------------- */
     let pdfUrl = '';
 
@@ -934,12 +971,6 @@ function doPost(e) {
       const colPdf = ensurePdfUrlHeader_(shRemitos);
       pdfUrl = savePdfToDrive_(pdfBase64, pdfName);
       shRemitos.getRange(shRemitos.getLastRow(), colPdf).setValue(pdfUrl);
-    } else {
-      try {
-        pdfUrl = generarPDFDesdeRemito(nro);
-      } catch (ePdf) {
-        Logger.log('Error auto-generando PDF para ' + nro + ': ' + ePdf);
-      }
     }
 
     const resp = { ok:true, nroRemito:nro };
