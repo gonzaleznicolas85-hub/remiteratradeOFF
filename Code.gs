@@ -573,6 +573,10 @@ function doGet(e) {
     return handleGetPedidos_(ss);
   }
 
+  if (action === 'clientes') {
+    return handleGetClientes_(ss);
+  }
+
   return jsonOut({ ok:false, error:'Acción desconocida: ' + action }, 400);
 }
 
@@ -746,6 +750,42 @@ function handleUpdateEstadoPedido_(data) {
 
   sh.getRange(row, 10).setValue(estado); // columna J (índice 9, 1-based=10) = Estado
   return jsonOut({ ok:true, id: id, estado: estado });
+}
+
+/* ==========================================================
+ * FICHA DE CLIENTES — hoja "CLIENTES" de esta misma planilla (STOCK/REMITOS)
+ * ========================================================== */
+function handleGetClientes_(ss) {
+  const sh = ss.getSheetByName('CLIENTES');
+  if (!sh) return jsonOut({ ok:false, error:'No existe la hoja CLIENTES' }, 500);
+
+  const lastRow = sh.getLastRow();
+  const lastCol = sh.getLastColumn();
+  if (lastRow < 2) return jsonOut({ ok:true, clientes: [] });
+
+  const headers = sh.getRange(1,1,1,lastCol).getValues()[0];
+  const idx = {
+    codigo:         stockColIndex_(headers, ['cod. chess','codigo','código']),
+    canal:          stockColIndex_(headers, ['canal']),
+    responsable:    stockColIndex_(headers, ['responsable']),
+    razonSocial:    stockColIndex_(headers, ['razon social','razón social']),
+    nombreFantasia: stockColIndex_(headers, ['nombre de fantasia','nombre de fantasía','nombre fantasia']),
+    direccion:      stockColIndex_(headers, ['direccion','dirección']),
+    localidad:      stockColIndex_(headers, ['localidad'])
+  };
+
+  const vals = sh.getRange(2, 1, lastRow - 1, lastCol).getValues();
+  const clientes = vals.map(r => ({
+    codigo: idx.codigo >= 0 ? String(r[idx.codigo] || '') : '',
+    canal: idx.canal >= 0 ? String(r[idx.canal] || '') : '',
+    responsable: idx.responsable >= 0 ? String(r[idx.responsable] || '') : '',
+    razonSocial: idx.razonSocial >= 0 ? String(r[idx.razonSocial] || '') : '',
+    nombreFantasia: idx.nombreFantasia >= 0 ? String(r[idx.nombreFantasia] || '') : '',
+    direccion: idx.direccion >= 0 ? String(r[idx.direccion] || '') : '',
+    localidad: idx.localidad >= 0 ? String(r[idx.localidad] || '') : ''
+  })).filter(c => c.razonSocial || c.nombreFantasia || c.codigo);
+
+  return jsonOut({ ok:true, clientes: clientes });
 }
 
 function doPost(e) {

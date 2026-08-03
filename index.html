@@ -255,6 +255,7 @@
     <button type="button" data-page="pg-alertas">🔔 Alertas <span id="alertBadge" class="nav-badge" style="display:none">0</span></button>
     <button type="button" data-page="pg-historial">Histórico</button>
     <button type="button" data-page="pg-pedidos">📋 Pedidos</button>
+    <button type="button" data-page="pg-clientes">👥 Clientes</button>
   </nav>
   <div id="monthlyAlertBanner" class="alert-banner" style="display:none">
     <div class="alert-banner-text"></div>
@@ -570,6 +571,32 @@
         </div>
         <div class="note" id="pedidosCount" style="margin-bottom:8px"></div>
         <div id="pedidosList"><div class="muted">Cargando...</div></div>
+      </section>
+    </section>
+
+    <section id="pg-clientes" class="page">
+      <section class="card">
+        <div class="refresh-row">
+          <div class="note" style="margin:0">Ficha de clientes (hoja CLIENTES).</div>
+          <div class="actions" style="width:auto">
+            <button class="btn btn-ghost" id="clientesClearFilters">Limpiar filtros</button>
+            <button class="btn btn-ghost" id="clientesRefresh" style="width:auto">↻ Actualizar</button>
+          </div>
+        </div>
+        <div class="filters">
+          <input type="text" id="clientesSearch" placeholder="Buscar código, razón social, dirección..." />
+          <select id="clientesCanal"><option value="">Canal (todos)</option></select>
+          <select id="clientesResponsable"><option value="">Responsable (todos)</option></select>
+        </div>
+        <div class="note" id="clientesCount" style="margin-bottom:8px"></div>
+        <div class="stock-table-wrap">
+          <table class="grid">
+            <thead>
+              <tr><th>Código</th><th>Canal</th><th>Responsable</th><th>Razón social</th><th>Nombre fantasía</th><th>Dirección</th><th>Localidad</th></tr>
+            </thead>
+            <tbody id="clientesBody"><tr><td colspan="7" class="muted">Cargando...</td></tr></tbody>
+          </table>
+        </div>
       </section>
     </section>
 
@@ -1275,11 +1302,12 @@
     function _debounce(fn, ms){ let t; return function(...args){ clearTimeout(t); t=setTimeout(()=>fn.apply(this,args), ms); }; }
 
     const tabButtons = document.querySelectorAll('nav.tabs button');
-    const pages = { 'pg-remito': null, 'pg-stock': null, 'pg-alta': null, 'pg-catalogo': null, 'pg-alertas': null, 'pg-historial': null, 'pg-pedidos': null };
+    const pages = { 'pg-remito': null, 'pg-stock': null, 'pg-alta': null, 'pg-catalogo': null, 'pg-alertas': null, 'pg-historial': null, 'pg-pedidos': null, 'pg-clientes': null };
     Object.keys(pages).forEach(id => pages[id] = document.getElementById(id));
 
     let histLoadedOnce = false;
     let pedidosLoadedOnce = false;
+    let clientesLoadedOnce = false;
 
     function activateTab(target){
       tabButtons.forEach(b => { b.removeAttribute('aria-current'); if (b.getAttribute('data-page') === target) b.setAttribute('aria-current','page'); });
@@ -1304,6 +1332,7 @@
       }
       if (target === 'pg-historial' && !histLoadedOnce) { histLoadedOnce = true; loadHistorial(); }
       if (target === 'pg-pedidos' && !pedidosLoadedOnce) { pedidosLoadedOnce = true; loadPedidos(); }
+      if (target === 'pg-clientes' && !clientesLoadedOnce) { clientesLoadedOnce = true; loadClientes(); }
     }
 
     tabButtons.forEach(btn => {
@@ -2163,6 +2192,142 @@
       document.getElementById('pedidosFechaHasta').value = '';
       renderPedidos();
     };
+
+    /* =========================================================
+     * FICHA DE CLIENTES (hoja CLIENTES)
+     * ========================================================= */
+    let clientesData = [];
+    let _clientesLoading = null;
+
+    function ensureClientesLoaded(force){
+      if (clientesData.length && !force) return Promise.resolve(clientesData);
+      if (_clientesLoading && !force) return _clientesLoading;
+      _clientesLoading = fetch(PROXY_URL + '?action=clientes')
+        .then(res => res.json())
+        .then(json => {
+          if (!json.ok) throw new Error(json.error || 'Error desconocido');
+          clientesData = json.clientes || [];
+          return clientesData;
+        })
+        .finally(() => { _clientesLoading = null; });
+      return _clientesLoading;
+    }
+
+    async function loadClientes(){
+      const body = document.getElementById('clientesBody');
+      body.innerHTML = '<tr><td colspan="7" class="muted">Cargando...</td></tr>';
+      try {
+        await ensureClientesLoaded(true);
+        fillClientesFilterOptions();
+        renderClientes();
+      } catch (err) {
+        body.innerHTML = '<tr><td colspan="7" class="err">Error: ' + err.message + '</td></tr>';
+      }
+    }
+
+    function fillClientesFilterOptions(){
+      const canalSel = document.getElementById('clientesCanal');
+      const respSel = document.getElementById('clientesResponsable');
+      const canales = [...new Set(clientesData.map(c => c.canal).filter(Boolean))].sort();
+      const responsables = [...new Set(clientesData.map(c => c.responsable).filter(Boolean))].sort();
+      const prevCanal = canalSel.value, prevResp = respSel.value;
+      canalSel.innerHTML = '<option value="">Canal (todos)</option>' + canales.map(c => `<option value="${c}">${c}</option>`).join('');
+      respSel.innerHTML = '<option value="">Responsable (todos)</option>' + responsables.map(r => `<option value="${r}">${r}</option>`).join('');
+      canalSel.value = prevCanal; respSel.value = prevResp;
+    }
+
+    function renderClientes(){
+      const body = document.getElementById('clientesBody');
+      const countEl = document.getElementById('clientesCount');
+      const q = document.getElementById('clientesSearch').value.trim().toLowerCase();
+      const canal = document.getElementById('clientesCanal').value;
+      const responsable = document.getElementById('clientesResponsable').value;
+
+      const filtered = clientesData.filter(c => {
+        if (q && !(c.codigo.toLowerCase().includes(q) || c.razonSocial.toLowerCase().includes(q) || c.nombreFantasia.toLowerCase().includes(q) || c.direccion.toLowerCase().includes(q) || c.localidad.toLowerCase().includes(q))) return false;
+        if (canal && c.canal !== canal) return false;
+        if (responsable && c.responsable !== responsable) return false;
+        return true;
+      });
+
+      countEl.textContent = filtered.length + ' de ' + clientesData.length + ' clientes';
+
+      if (!filtered.length){ body.innerHTML = '<tr><td colspan="7" class="muted">Sin resultados.</td></tr>'; return; }
+
+      body.innerHTML = filtered.map(c => `
+        <tr>
+          <td>${c.codigo}</td>
+          <td>${c.canal}</td>
+          <td>${c.responsable}</td>
+          <td>${c.razonSocial}</td>
+          <td>${c.nombreFantasia}</td>
+          <td>${c.direccion}</td>
+          <td>${c.localidad}</td>
+        </tr>
+      `).join('');
+    }
+
+    document.getElementById('clientesSearch').addEventListener('input', _debounce(renderClientes, 200));
+    document.getElementById('clientesCanal').addEventListener('change', renderClientes);
+    document.getElementById('clientesResponsable').addEventListener('change', renderClientes);
+    document.getElementById('clientesRefresh').onclick = (e) => { e.preventDefault(); loadClientes(); };
+    document.getElementById('clientesClearFilters').onclick = (e) => {
+      e.preventDefault();
+      document.getElementById('clientesSearch').value = '';
+      document.getElementById('clientesCanal').value = '';
+      document.getElementById('clientesResponsable').value = '';
+      renderClientes();
+    };
+
+    /* =========================================================
+     * AUTOCOMPLETADO DE CLIENTE EN REMITO (Punto de venta / Cliente)
+     * Mismo patrón "portal" en position:fixed que el dropdown de SKU:
+     * inmune a cualquier recorte de contenedores padre, funciona en
+     * cualquier navegador/dispositivo. Si el cliente no está en la
+     * lista, el campo sigue siendo de texto libre (se puede tipear
+     * cualquier cosa igual).
+     * ========================================================= */
+    const clienteDropdownPortal = document.createElement('div');
+    clienteDropdownPortal.className = 'sku-dropdown-portal';
+    document.body.appendChild(clienteDropdownPortal);
+
+    function clienteDisplayLabel(c){
+      return [c.nombreFantasia || c.razonSocial, c.direccion, c.localidad].filter(Boolean).join(' — ');
+    }
+
+    let clienteDropdownMatches = [];
+
+    function renderClienteDropdown(){
+      const q = puntoEl.value.trim().toLowerCase();
+      if (!q){ clienteDropdownPortal.style.display = 'none'; return; }
+      ensureClientesLoaded().catch(() => {});
+      clienteDropdownMatches = clientesData
+        .filter(c => c.nombreFantasia.toLowerCase().includes(q) || c.razonSocial.toLowerCase().includes(q) || c.direccion.toLowerCase().includes(q) || c.localidad.toLowerCase().includes(q) || c.codigo.toLowerCase().includes(q))
+        .slice(0, 8);
+      if (!clienteDropdownMatches.length){ clienteDropdownPortal.style.display = 'none'; return; }
+      const r = puntoEl.getBoundingClientRect();
+      clienteDropdownPortal.style.left = Math.round(r.left) + 'px';
+      clienteDropdownPortal.style.top = Math.round(r.bottom + 4) + 'px';
+      clienteDropdownPortal.style.width = Math.round(r.width) + 'px';
+      clienteDropdownPortal.innerHTML = clienteDropdownMatches.map((c, i) => `
+        <div class="sku-option" data-idx="${i}">
+          <span class="gs-title">${c.nombreFantasia || c.razonSocial}</span>
+          <span class="gs-sub">${[c.direccion, c.localidad].filter(Boolean).join(', ')}${c.canal ? ' · ' + c.canal : ''}</span>
+        </div>`).join('');
+      clienteDropdownPortal.style.display = 'block';
+    }
+
+    puntoEl.addEventListener('input', _debounce(renderClienteDropdown, 150));
+    puntoEl.addEventListener('focus', renderClienteDropdown);
+    puntoEl.addEventListener('blur', () => { setTimeout(() => { clienteDropdownPortal.style.display = 'none'; }, 150); });
+    clienteDropdownPortal.addEventListener('mousedown', (e) => {
+      const opt = e.target.closest('.sku-option');
+      if (!opt) return;
+      e.preventDefault();
+      const c = clienteDropdownMatches[Number(opt.dataset.idx)];
+      if (c) puntoEl.value = clienteDisplayLabel(c);
+      clienteDropdownPortal.style.display = 'none';
+    });
 
     /* =========================================================
      * TOGGLE DE TEMA (claro/oscuro)
