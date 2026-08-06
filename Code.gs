@@ -32,7 +32,7 @@ const FOLDER_ID_IMAGENES = '1H7YJqkC_nds-U7l5T-DIPA4bLmpnDPEz';
 // cuadros de texto con placeholders {{...}}). Se completa corriendo UNA VEZ
 // crearPlantillaRemitoSlides_() desde el editor y pegando acá el ID que
 // devuelve. Ver knowledge/ o AGENTS.md de este repo si hace falta rehacerla.
-const TEMPLATE_SLIDE_ID = 'PENDIENTE_CORRER_crearPlantillaRemitoSlides_';
+const TEMPLATE_SLIDE_ID = '1JtTPvAWSvgR61WMxcu__oIQdnkCjPhqc-JiBvVlH9ug';
 
 // Pedidos de materiales: el Form de esta área guarda las respuestas en OTRA
 // planilla (no en la de STOCK/REMITOS), hay que abrirla aparte por ID.
@@ -345,34 +345,29 @@ function handleAttachPdf_(shRemitos, data) {
  * la constante TEMPLATE_SLIDE_ID de arriba.
  */
 function crearPlantillaRemitoSlides_() {
+  // El servicio básico de Slides no permite crear una presentación con
+  // tamaño de página custom (no existe Presentation.setPageSize). Por eso
+  // la plantilla maestra se crea A MANO una sola vez: Diapositiva nueva en
+  // slides.new, Archivo > Configuración de página > Personalizado > Puntos
+  // > 1024 x 1536, y se pega acá el ID. A partir de ahí las coordenadas
+  // son 1:1 con los px de la imagen (sin escalar). Comparte la misma
+  // plantilla maestra que remiteraTrade (misma imagen de referencia).
+  const MASTER_ID = '1JtTPvAWSvgR61WMxcu__oIQdnkCjPhqc-JiBvVlH9ug';
   const IMG_URL = 'https://remiteraoff.netlify.app/remito-template.jpg';
   const blob = UrlFetchApp.fetch(IMG_URL).getBlob();
 
-  const pres = SlidesApp.create('Plantilla Remito OFF (NO BORRAR)');
+  const pres = SlidesApp.openById(MASTER_ID);
   const slide = pres.getSlides()[0];
   slide.getShapes().forEach(function (sh) {
     try { sh.remove(); } catch (eRm) { /* placeholders por defecto */ }
   });
 
-  // El servicio básico de Slides no permite cambiar el tamaño de página
-  // (no existe setPageSize), así que en vez de 1024x1536pt directo,
-  // escalamos todo (imagen + campos) para que entren completos dentro de
-  // la página que da la presentación por defecto, sin estirar el remito.
-  const pageW = pres.getPageWidth();
-  const pageH = pres.getPageHeight();
-  const scale = Math.min(pageW / 1024, pageH / 1536);
-  const offX = (pageW - 1024 * scale) / 2;
-  const offY = (pageH - 1536 * scale) / 2;
-  const X = function (x) { return offX + x * scale; };
-  const Y = function (y) { return offY + y * scale; };
-  const S = function (n) { return n * scale; };
-
-  slide.insertImage(blob, X(0), Y(0), S(1024), S(1536));
+  slide.insertImage(blob, 0, 0, 1024, 1536);
 
   function addBox(text, left, top, width, height, size, align) {
-    const box = slide.insertTextBox(text, X(left), Y(top), S(width), S(height));
+    const box = slide.insertTextBox(text, left, top, width, height);
     const tr = box.getText();
-    tr.getTextStyle().setFontFamily('Arial').setFontSize(Math.max(4, size * scale)).setForegroundColor('#141414');
+    tr.getTextStyle().setFontFamily('Arial').setFontSize(size).setForegroundColor('#141414');
     tr.getParagraphStyle().setParagraphAlignment(
       align === 'CENTER' ? SlidesApp.ParagraphAlignment.CENTER : SlidesApp.ParagraphAlignment.START
     );
