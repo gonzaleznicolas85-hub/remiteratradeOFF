@@ -654,6 +654,50 @@ function generarPDFDesdeRemito(nroRemito) {
 
 
 
+/**
+ * Arma el PDF con el modelo NUEVO (plantilla de Slides) para un remito ya
+ * cargado en REMITOS, leyendo su header y detalle desde las hojas. Es lo
+ * que usan los dos accesos del menú de Sheets — reemplaza el viejo
+ * generarPDFDesdeRemito() (Google Docs), que queda solo como referencia.
+ */
+function generarPDFDesdeRemitoPlantilla_(nroRemito) {
+  const ss  = getSS_();
+  const shR = ss.getSheetByName(HOJA_REMITOS);
+  const shD = ss.getSheetByName(HOJA_DETALLE);
+  if (!shR || !shD) throw new Error('No se encontraron las hojas REMITOS o DETALLEREMITOS');
+
+  const dataR = shR.getDataRange().getValues();
+  const nroBuscado = String(nroRemito).trim();
+  let idx = -1;
+  for (let i = 1; i < dataR.length; i++) {
+    if (String(dataR[i][0]).trim() === nroBuscado) { idx = i; break; }
+  }
+  if (idx === -1) throw new Error('Remito no encontrado: ' + nroRemito);
+
+  const H = dataR[idx]; // [NroRemito, Fecha, PuntoVenta, Usuario, Obs, Timestamp, PDF_URL]
+  const fechaObj = toJsDate_(H[1]);
+  const fecha = fechaObj
+    ? Utilities.formatDate(fechaObj, Session.getScriptTimeZone(), 'yyyy-MM-dd')
+    : String(H[1] || '');
+
+  const header = { fecha: fecha, punto_venta: String(H[2] || ''), obs: String(H[4] || '') };
+
+  const dataD = shD.getDataRange().getValues();
+  const lines = [];
+  for (let i = 1; i < dataD.length; i++) {
+    if (String(dataD[i][0]).trim() === nroBuscado) {
+      lines.push({ sku: dataD[i][1], descripcion: dataD[i][2], cantidad: dataD[i][5] });
+    }
+  }
+
+  const result = buildRemitoPdfFromTemplate_(nroBuscado, header, lines);
+
+  const colPdf = ensurePdfUrlHeader_(shR);
+  shR.getRange(idx + 1, colPdf).setValue(result.pdfUrl);
+
+  return result.pdfUrl;
+}
+
 /* ==========================================================
  * GENERAR TODOS LOS PDFs PENDIENTES
  * ========================================================== */
@@ -670,7 +714,7 @@ function generarPDFsPendientes() {
     if (!nro) continue;
     if (!url) {
       try {
-        const u = generarPDFDesdeRemito(nro);
+        const u = generarPDFDesdeRemitoPlantilla_(nro);
         Logger.log('✅ ' + nro + ' → ' + u);
       } catch (e) {
         Logger.log('❌ ' + nro + ' → ' + e);
@@ -714,7 +758,7 @@ function menuGenerarPDFSeleccionado() {
       return;
     }
 
-    const url = generarPDFDesdeRemito(nro);
+    const url = generarPDFDesdeRemitoPlantilla_(nro);
     ui.alert('PDF generado:\n' + url);
 
   } catch (e) {
