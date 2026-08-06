@@ -639,7 +639,6 @@
     </div>
   </div>
 
-  <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js" crossorigin="anonymous" referrerpolicy="no-referrer"></script>
   <script>
     const PRODUCTS = []; // este clon no tiene catálogo estático propio: mientras el stock real no cargó, no se sugiere nada (evita mostrar SKUs de otra área)
     const PROXY_URL = "/.netlify/functions/appscript-proxy";
@@ -857,79 +856,27 @@
     addRow();
 
     /* =========================================================
-     * PDF DEL REMITO — plantilla propia (remito-template.jpg)
-     * Coordenadas medidas por análisis de píxeles sobre la imagen real
-     * (1024x1536): posición de cada línea/casillero del formulario impreso.
+     * PDF DEL REMITO — plantilla real (Google Slides armada server-side)
+     * El servidor (Apps Script) arma el PDF a partir de la plantilla de
+     * Slides con la imagen del remito real, lo guarda en Drive (PDF_URL)
+     * y devuelve el PDF en base64 para descargarlo al toque.
      * ========================================================= */
-    let remitoTemplateDataUri = null;
-    function loadRemitoTemplate(){
-      if (remitoTemplateDataUri) return Promise.resolve(remitoTemplateDataUri);
-      return fetch('remito-template.jpg')
-        .then(r => r.blob())
-        .then(blob => new Promise((resolve, reject) => {
-          const reader = new FileReader();
-          reader.onload = () => { remitoTemplateDataUri = reader.result; resolve(remitoTemplateDataUri); };
-          reader.onerror = reject;
-          reader.readAsDataURL(blob);
-        }));
-    }
-
-    // Y superior de cada fila de la tabla Item/Cod.Mat./Descripción/Cantidad/UM/Nº Ticket
-    const REMITO_TABLE_ROW_TOPS = [575,606,633,660,687,714,741,768,795,822,849,876,901,928,955,982,1009];
-
-    async function buildRemitoPdf(nroRemito, header, lines){
-      if (!window.jspdf) return null;
-      const { jsPDF } = window.jspdf;
-      const doc = new jsPDF({ unit:'pt', format:[1024,1536] });
-
-      try {
-        const templateUri = await loadRemitoTemplate();
-        doc.addImage(templateUri, 'JPEG', 0, 0, 1024, 1536);
-      } catch (errTemplate) {
-        // si no se pudo cargar la plantilla, seguimos igual sobre hoja en blanco
-      }
-
-      doc.setFont('helvetica', 'normal');
-      doc.setTextColor(20, 20, 20);
-
-      doc.setFontSize(15);
-      doc.text(String(nroRemito), 760, 80);
-
-      doc.setFontSize(11);
-      const [yyyy, mm, dd] = String(header.fecha || '').split('-');
-      if (dd)   doc.text(dd,   633, 175, { align:'center' });
-      if (mm)   doc.text(mm,   691, 175, { align:'center' });
-      if (yyyy) doc.text(yyyy, 766, 175, { align:'center' });
-
-      // "Punto de venta / Cliente" puede venir como "Nombre — Dirección — Localidad"
-      // (cuando se elige del autocompletado de Clientes) o como texto libre.
-      const partesCliente = String(header.punto_venta || '').split(' — ');
-      doc.setFontSize(12);
-      doc.text(partesCliente[0] || '', 150, 341, { maxWidth: 470 });
-      doc.setFontSize(11);
-      if (partesCliente[1]) doc.text(partesCliente[1], 145, 376, { maxWidth: 480 });
-      if (partesCliente[2]) doc.text(partesCliente[2], 145, 411, { maxWidth: 480 });
-
-      if (header.obs) doc.text(String(header.obs), 150, 1032, { maxWidth: 740 });
-
-      doc.setFontSize(10);
-      lines.slice(0, REMITO_TABLE_ROW_TOPS.length - 1).forEach((l, i) => {
-        const y = REMITO_TABLE_ROW_TOPS[i] + 19;
-        doc.text(String(i + 1), 65, y, { align:'center' });
-        doc.text(String(l.sku || ''), 110, y);
-        doc.text(String(l.descripcion || ''), 228, y, { maxWidth: 485 });
-        doc.text(String(l.cantidad || ''), 773, y, { align:'center' });
-      });
-
-      return doc;
-    }
-
-    function attachPdfToRemito(nroRemito, pdfDataUri, pdfName){
-      return fetch(PROXY_URL, {
+    async function generarPdfRemitoServidor(nroRemito, header, lines){
+      const res = await fetch(PROXY_URL, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ action:'attachPdf', nroRemito, pdfBase64: pdfDataUri, pdfName })
-      }).catch(() => {}); // el remito ya quedó registrado igual; el PDF es best-effort
+        body: JSON.stringify({ action:'generarPdfRemito', nroRemito, header, lines })
+      });
+      return res.json();
+    }
+
+    function descargarPdfBase64(base64, filename){
+      const link = document.createElement('a');
+      link.href = 'data:application/pdf;base64,' + base64;
+      link.download = filename;
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
     }
 
     /* =========================================================
@@ -970,8 +917,7 @@
           if (!json.ok) break; // error real del backend: se deja en cola para revisar a mano
           q.shift(); saveQueue(q); updatePendingBadge(); syncedCount++;
           try {
-            const pdfDoc = await buildRemitoPdf(json.nroRemito, item.header, item.lines);
-            if (pdfDoc) attachPdfToRemito(json.nroRemito, pdfDoc.output('datauristring'), 'Remito_' + json.nroRemito + '.pdf');
+            await generarPdfRemitoServidor(json.nroRemito, item.header, item.lines);
           } catch (ePdf) { /* best-effort */ }
         } catch (err) { break; } // seguimos sin red, se reintenta después
       }
@@ -1031,11 +977,9 @@
         openSuccessModal(json.nroRemito, lines.length, header);
 
         try {
-          const pdfDoc = await buildRemitoPdf(json.nroRemito, header, lines);
-          if (pdfDoc) {
-            const pdfName = 'Remito_' + json.nroRemito + '.pdf';
-            pdfDoc.save(pdfName);
-            attachPdfToRemito(json.nroRemito, pdfDoc.output('datauristring'), pdfName);
+          const pdfResp = await generarPdfRemitoServidor(json.nroRemito, header, lines);
+          if (pdfResp && pdfResp.ok && pdfResp.pdfBase64) {
+            descargarPdfBase64(pdfResp.pdfBase64, 'Remito_' + json.nroRemito + '.pdf');
           }
         } catch (ePdf) { /* el remito ya quedó registrado igual; el PDF es best-effort */ }
 

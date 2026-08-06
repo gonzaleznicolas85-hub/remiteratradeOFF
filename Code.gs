@@ -28,6 +28,12 @@ const FOLDER_ID_PDF = '1H7YJqkC_nds-U7l5T-DIPA4bLmpnDPEz';
 // dedicada si preferís mantenerlas separadas.
 const FOLDER_ID_IMAGENES = '1H7YJqkC_nds-U7l5T-DIPA4bLmpnDPEz';
 
+// ID de la presentación de Slides "plantilla maestra" del remito (imagen +
+// cuadros de texto con placeholders {{...}}). Se completa corriendo UNA VEZ
+// crearPlantillaRemitoSlides_() desde el editor y pegando acá el ID que
+// devuelve. Ver knowledge/ o AGENTS.md de este repo si hace falta rehacerla.
+const TEMPLATE_SLIDE_ID = 'PENDIENTE_CORRER_crearPlantillaRemitoSlides_';
+
 // Pedidos de materiales: el Form de esta área guarda las respuestas en OTRA
 // planilla (no en la de STOCK/REMITOS), hay que abrirla aparte por ID.
 const PEDIDOS_SHEET_ID = '1W8xls7GeUj0SJSiTooigl6a3XzH9dzkIG5lh5hHuByI';
@@ -323,6 +329,149 @@ function handleAttachPdf_(shRemitos, data) {
   shRemitos.getRange(row, colPdf).setValue(url);
 
   return jsonOut({ ok:true, nroRemito: nro, pdfUrl: url });
+}
+
+/* ==========================================================
+ * PDF con plantilla de Slides (imagen de remito real + campos)
+ * ========================================================== */
+
+/**
+ * SETUP — correr UNA SOLA VEZ a mano desde el editor de Apps Script.
+ * Crea la presentación de Slides "plantilla maestra": trae la imagen del
+ * remito ya publicada en el sitio, la pone de fondo a página completa, y
+ * agrega los cuadros de texto con los placeholders {{...}} en las mismas
+ * coordenadas que usaba el modelo jsPDF anterior (1024x1536 pt = 1:1 con
+ * los px de la imagen). Al terminar, loguea el ID: copiarlo y pegarlo en
+ * la constante TEMPLATE_SLIDE_ID de arriba.
+ */
+function crearPlantillaRemitoSlides_() {
+  const IMG_URL = 'https://remiteraoff.netlify.app/remito-template.jpg';
+  const blob = UrlFetchApp.fetch(IMG_URL).getBlob();
+
+  const pres = SlidesApp.create('Plantilla Remito OFF (NO BORRAR)');
+  pres.setPageSize(1024, 1536);
+  const slide = pres.getSlides()[0];
+  slide.getShapes().forEach(function (sh) {
+    try { sh.remove(); } catch (eRm) { /* placeholders por defecto */ }
+  });
+
+  slide.insertImage(blob, 0, 0, 1024, 1536);
+
+  function addBox(text, left, top, width, height, size, align) {
+    const box = slide.insertTextBox(text, left, top, width, height);
+    const tr = box.getText();
+    tr.getTextStyle().setFontFamily('Arial').setFontSize(size).setForegroundColor('#141414');
+    tr.getParagraphStyle().setParagraphAlignment(
+      align === 'CENTER' ? SlidesApp.ParagraphAlignment.CENTER : SlidesApp.ParagraphAlignment.START
+    );
+    box.getFill().setTransparent();
+    box.getBorder().setTransparent();
+    return box;
+  }
+
+  addBox('{{NUMERO}}', 750, 62, 180, 24, 15, 'LEFT');
+  addBox('{{DD}}', 603, 160, 60, 20, 11, 'CENTER');
+  addBox('{{MM}}', 661, 160, 60, 20, 11, 'CENTER');
+  addBox('{{YYYY}}', 726, 160, 80, 20, 11, 'CENTER');
+  addBox('{{CLIENTE_L1}}', 150, 326, 470, 20, 12, 'LEFT');
+  addBox('{{CLIENTE_L2}}', 145, 362, 480, 18, 11, 'LEFT');
+  addBox('{{CLIENTE_L3}}', 145, 397, 480, 18, 11, 'LEFT');
+  addBox('{{OBS}}', 150, 1016, 740, 50, 11, 'LEFT');
+
+  const ROW_TOPS = [575, 606, 633, 660, 687, 714, 741, 768, 795, 822, 849, 876, 901, 928, 955, 982];
+  for (let i = 0; i < ROW_TOPS.length; i++) {
+    const y = ROW_TOPS[i] + 4;
+    const n = i + 1;
+    addBox(String(n), 50, y, 30, 18, 10, 'CENTER');
+    addBox('{{SKU_' + n + '}}', 100, y, 110, 18, 10, 'LEFT');
+    addBox('{{DESC_' + n + '}}', 225, y, 490, 18, 10, 'LEFT');
+    addBox('{{CANT_' + n + '}}', 748, y, 50, 18, 10, 'CENTER');
+  }
+
+  Logger.log('TEMPLATE_SLIDE_ID = ' + pres.getId());
+  return pres.getId();
+}
+
+/**
+ * Copia la plantilla, reemplaza los placeholders con los datos del remito,
+ * exporta a PDF, guarda la copia oficial en Drive y borra la copia de
+ * trabajo de Slides. Devuelve { pdfUrl, pdfBase64 }.
+ */
+function buildRemitoPdfFromTemplate_(nroRemito, header, lines) {
+  const copyFile = DriveApp.getFileById(TEMPLATE_SLIDE_ID).makeCopy('Remito_' + nroRemito + '_tmp');
+  const pres = SlidesApp.openById(copyFile.getId());
+  const slide = pres.getSlides()[0];
+
+  const partesFecha = String(header.fecha || '').split('-'); // yyyy-mm-dd
+  const yyyy = partesFecha[0] || '';
+  const mm = partesFecha[1] || '';
+  const dd = partesFecha[2] || '';
+  const partesCliente = String(header.punto_venta || '').split(' — ');
+
+  slide.replaceAllText('{{NUMERO}}', String(nroRemito));
+  slide.replaceAllText('{{DD}}', dd);
+  slide.replaceAllText('{{MM}}', mm);
+  slide.replaceAllText('{{YYYY}}', yyyy);
+  slide.replaceAllText('{{CLIENTE_L1}}', partesCliente[0] || '');
+  slide.replaceAllText('{{CLIENTE_L2}}', partesCliente[1] || '');
+  slide.replaceAllText('{{CLIENTE_L3}}', partesCliente[2] || '');
+  slide.replaceAllText('{{OBS}}', String(header.obs || ''));
+
+  for (let i = 0; i < 16; i++) {
+    const n = i + 1;
+    const l = lines[i];
+    slide.replaceAllText('{{SKU_' + n + '}}', l ? String(l.sku || '') : '');
+    slide.replaceAllText('{{DESC_' + n + '}}', l ? String(l.descripcion || '') : '');
+    slide.replaceAllText('{{CANT_' + n + '}}', l ? String(l.cantidad || '') : '');
+  }
+
+  pres.saveAndClose();
+
+  const pdfBlob = DriveApp.getFileById(copyFile.getId()).getAs('application/pdf');
+  const pdfBase64 = Utilities.base64Encode(pdfBlob.getBytes());
+
+  const folder = DriveApp.getFolderById(FOLDER_ID_PDF);
+  const finalFile = folder.createFile(pdfBlob).setName('Remito_' + nroRemito + '.pdf');
+  finalFile.setSharing(DriveApp.Access.ANYONE_WITH_LINK, DriveApp.Permission.VIEW);
+
+  DriveApp.getFileById(copyFile.getId()).setTrashed(true);
+
+  return { pdfUrl: finalFile.getUrl(), pdfBase64: pdfBase64 };
+}
+
+/**
+ * Handler de la acción 'generarPdfRemito': arma el PDF desde la plantilla
+ * de Slides, lo linkea en la fila del remito (PDF_URL) y devuelve el
+ * base64 para que el navegador lo descargue al toque.
+ */
+function handleGenerarPdfRemito_(shRemitos, data) {
+  const nro = String(data.nroRemito || '').trim();
+  if (!nro) return jsonOut({ ok:false, error:'Falta nroRemito' }, 400);
+
+  const header = data.header || {};
+  const lines = Array.isArray(data.lines) ? data.lines : [];
+
+  let result;
+  try {
+    result = buildRemitoPdfFromTemplate_(nro, header, lines);
+  } catch (eGen) {
+    return jsonOut({ ok:false, error:'Error generando PDF: ' + eGen }, 500);
+  }
+
+  const last = shRemitos.getLastRow();
+  let row = -1;
+  if (last >= 2) {
+    const vals = shRemitos.getRange(2, 1, last - 1, 1).getValues();
+    for (let i = 0; i < vals.length; i++) {
+      if (String(vals[i][0]).trim() === nro) { row = i + 2; break; }
+    }
+  }
+  if (row !== -1) {
+    const colPdf = ensurePdfUrlHeader_(shRemitos);
+    shRemitos.getRange(row, colPdf).setValue(result.pdfUrl);
+  }
+
+  return jsonOut({ ok:true, nroRemito: nro, pdfUrl: result.pdfUrl, pdfBase64: result.pdfBase64 });
 }
 
 /**
@@ -857,6 +1006,10 @@ function doPost(e) {
 
     if (action === 'attachPdf') {
       return handleAttachPdf_(shRemitos, data);
+    }
+
+    if (action === 'generarPdfRemito') {
+      return handleGenerarPdfRemito_(shRemitos, data);
     }
 
     const header    = data.header || {};
