@@ -349,18 +349,30 @@ function crearPlantillaRemitoSlides_() {
   const blob = UrlFetchApp.fetch(IMG_URL).getBlob();
 
   const pres = SlidesApp.create('Plantilla Remito OFF (NO BORRAR)');
-  pres.setPageSize(1024, 1536);
   const slide = pres.getSlides()[0];
   slide.getShapes().forEach(function (sh) {
     try { sh.remove(); } catch (eRm) { /* placeholders por defecto */ }
   });
 
-  slide.insertImage(blob, 0, 0, 1024, 1536);
+  // El servicio básico de Slides no permite cambiar el tamaño de página
+  // (no existe setPageSize), así que en vez de 1024x1536pt directo,
+  // escalamos todo (imagen + campos) para que entren completos dentro de
+  // la página que da la presentación por defecto, sin estirar el remito.
+  const pageW = pres.getPageWidth();
+  const pageH = pres.getPageHeight();
+  const scale = Math.min(pageW / 1024, pageH / 1536);
+  const offX = (pageW - 1024 * scale) / 2;
+  const offY = (pageH - 1536 * scale) / 2;
+  const X = function (x) { return offX + x * scale; };
+  const Y = function (y) { return offY + y * scale; };
+  const S = function (n) { return n * scale; };
+
+  slide.insertImage(blob, X(0), Y(0), S(1024), S(1536));
 
   function addBox(text, left, top, width, height, size, align) {
-    const box = slide.insertTextBox(text, left, top, width, height);
+    const box = slide.insertTextBox(text, X(left), Y(top), S(width), S(height));
     const tr = box.getText();
-    tr.getTextStyle().setFontFamily('Arial').setFontSize(size).setForegroundColor('#141414');
+    tr.getTextStyle().setFontFamily('Arial').setFontSize(Math.max(4, size * scale)).setForegroundColor('#141414');
     tr.getParagraphStyle().setParagraphAlignment(
       align === 'CENTER' ? SlidesApp.ParagraphAlignment.CENTER : SlidesApp.ParagraphAlignment.START
     );
