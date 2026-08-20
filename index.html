@@ -84,6 +84,7 @@
     .btn:hover{filter:brightness(1.06)}
     .btn:active{transform:scale(.98)}
     .btn-primary{background:var(--accent);color:var(--accent-contrast);border:1px solid var(--accent)}
+    .btn:disabled{opacity:.55;cursor:not-allowed;filter:grayscale(.3)}
     .btn-ghost{background:var(--bg-subtle);border:1px solid var(--border);color:var(--text)}
     .btn-danger{background:var(--danger);color:var(--danger-contrast);border:1px solid var(--danger)}
     .right{display:flex;justify-content:flex-end}
@@ -947,47 +948,61 @@
     document.getElementById('successOk').onclick = closeSuccessModal;
     document.getElementById('successModal').addEventListener('click', (e) => { if (e.target.id === 'successModal') closeSuccessModal(); });
 
+    let isSubmittingRemito = false;
     async function submit(){
+      if (isSubmittingRemito) return; // evita doble registro por doble click/tap
+      isSubmittingRemito = true;
+      const submitBtn = document.getElementById('submitBtn');
+      const submitBtnLabelOriginal = submitBtn.textContent;
+      submitBtn.disabled = true;
+      submitBtn.textContent = 'Registrando...';
+
       msg.textContent=''; msg.className='';
 
-      const lines = Array.from(tbody.querySelectorAll('tr')).map(tr => {
-        const sku = tr.querySelector('.skuInput').value.trim();
-        const product = findBySku(sku);
-        const desc = tr.querySelector('.desc').value;
-        const tipo = tr.querySelector('.tipo').value;
-        const marca = tr.querySelector('.marca').value;
-        const cantidad = Number(tr.querySelector('.qty').value||'0');
-        return { sku, descripcion: product?product.descripcion:desc, tipo: product?product.tipo:tipo, marca: product?product.marca:marca, cantidad };
-      }).filter(l => l.sku && l.cantidad>0);
-
-      if (!fechaEl.value || !puntoEl.value.trim() || lines.length===0){ msg.textContent='Completá fecha, punto y al menos un ítem con cantidad.'; msg.className='err'; return; }
-
-      const header = { fecha: fechaEl.value, punto_venta: puntoEl.value.trim(), usuario: usuarioEl.value.trim(), obs: obsEl.value.trim() };
-
       try {
-        const form = new URLSearchParams();
-        form.append('header', JSON.stringify(header));
-        form.append('lines', JSON.stringify(lines));
+        const lines = Array.from(tbody.querySelectorAll('tr')).map(tr => {
+          const sku = tr.querySelector('.skuInput').value.trim();
+          const product = findBySku(sku);
+          const desc = tr.querySelector('.desc').value;
+          const tipo = tr.querySelector('.tipo').value;
+          const marca = tr.querySelector('.marca').value;
+          const cantidad = Number(tr.querySelector('.qty').value||'0');
+          return { sku, descripcion: product?product.descripcion:desc, tipo: product?product.tipo:tipo, marca: product?product.marca:marca, cantidad };
+        }).filter(l => l.sku && l.cantidad>0);
 
-        const res = await fetch(PROXY_URL, { method:'POST', body: form });
-        const json = await res.json();
-        if (!json.ok) { msg.textContent='❌ ' + (json.error||'Error'); if (json.detalle) msg.textContent += ' | ' + json.detalle.map(d=>d.sku+': '+d.error).join('; '); msg.className='err'; return; }
+        if (!fechaEl.value || !puntoEl.value.trim() || lines.length===0){ msg.textContent='Completá fecha, punto y al menos un ítem con cantidad.'; msg.className='err'; return; }
 
-        msg.textContent='✅ Remito ' + json.nroRemito + ' registrado. Ítems: ' + lines.length; msg.className='ok';
-        openSuccessModal(json.nroRemito, lines.length, header);
+        const header = { fecha: fechaEl.value, punto_venta: puntoEl.value.trim(), usuario: usuarioEl.value.trim(), obs: obsEl.value.trim() };
 
         try {
-          const pdfResp = await generarPdfRemitoServidor(json.nroRemito, header, lines);
-          if (pdfResp && pdfResp.ok && pdfResp.pdfBase64) {
-            descargarPdfBase64(pdfResp.pdfBase64, 'Remito_' + json.nroRemito + '.pdf');
-          }
-        } catch (ePdf) { /* el remito ya quedó registrado igual; el PDF es best-effort */ }
+          const form = new URLSearchParams();
+          form.append('header', JSON.stringify(header));
+          form.append('lines', JSON.stringify(lines));
 
-        puntoEl.value=''; resetUsuarioField(); obsEl.value=''; tbody.innerHTML=''; addRow(); computeTotal();
-      } catch (err) {
-        queueRemito(header, lines);
-        msg.textContent = '📴 Sin conexión: el remito se guardó en este dispositivo y se va a enviar solo cuando vuelva la señal.'; msg.className='ok';
-        puntoEl.value=''; resetUsuarioField(); obsEl.value=''; tbody.innerHTML=''; addRow(); computeTotal();
+          const res = await fetch(PROXY_URL, { method:'POST', body: form });
+          const json = await res.json();
+          if (!json.ok) { msg.textContent='❌ ' + (json.error||'Error'); if (json.detalle) msg.textContent += ' | ' + json.detalle.map(d=>d.sku+': '+d.error).join('; '); msg.className='err'; return; }
+
+          msg.textContent='✅ Remito ' + json.nroRemito + ' registrado. Ítems: ' + lines.length; msg.className='ok';
+          openSuccessModal(json.nroRemito, lines.length, header);
+
+          try {
+            const pdfResp = await generarPdfRemitoServidor(json.nroRemito, header, lines);
+            if (pdfResp && pdfResp.ok && pdfResp.pdfBase64) {
+              descargarPdfBase64(pdfResp.pdfBase64, 'Remito_' + json.nroRemito + '.pdf');
+            }
+          } catch (ePdf) { /* el remito ya quedó registrado igual; el PDF es best-effort */ }
+
+          puntoEl.value=''; resetUsuarioField(); obsEl.value=''; tbody.innerHTML=''; addRow(); computeTotal();
+        } catch (err) {
+          queueRemito(header, lines);
+          msg.textContent = '📴 Sin conexión: el remito se guardó en este dispositivo y se va a enviar solo cuando vuelva la señal.'; msg.className='ok';
+          puntoEl.value=''; resetUsuarioField(); obsEl.value=''; tbody.innerHTML=''; addRow(); computeTotal();
+        }
+      } finally {
+        isSubmittingRemito = false;
+        submitBtn.disabled = false;
+        submitBtn.textContent = submitBtnLabelOriginal;
       }
     }
 
