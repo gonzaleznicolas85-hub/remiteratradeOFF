@@ -299,12 +299,23 @@ function descontarStockPorRemito_(shStock, vrLineas) {
 
     const cant = cantidadPorSku[sku];
 
+    // Se leen AMBOS valores antes de escribir cualquiera de los dos.
+    // (Leer una celda justo después de escribir otra celda distinta de la
+    // misma fila, dentro de la misma ejecución, puede devolver un estado
+    // intermedio/no confirmado todavía — visto empíricamente: escribir
+    // Entregado y recién ahí leer StockActual traía un valor ya afectado,
+    // duplicando el descuento. Leyendo todo primero se evita el problema.)
+    const entregadoActual = map.idxEntregado >= 0
+      ? Number(shStock.getRange(row, map.idxEntregado + 1).getValue() || 0)
+      : 0;
+    const stockActual = map.idxStockActual >= 0
+      ? Number(shStock.getRange(row, map.idxStockActual + 1).getValue() || 0)
+      : 0;
+
     if (map.idxEntregado >= 0) {
-      const entregadoActual = Number(shStock.getRange(row, map.idxEntregado + 1).getValue() || 0);
       shStock.getRange(row, map.idxEntregado + 1).setValue(entregadoActual + cant);
     }
     if (map.idxStockActual >= 0) {
-      const stockActual = Number(shStock.getRange(row, map.idxStockActual + 1).getValue() || 0);
       shStock.getRange(row, map.idxStockActual + 1).setValue(stockActual - cant);
     }
   });
