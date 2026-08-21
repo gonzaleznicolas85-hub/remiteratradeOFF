@@ -106,6 +106,10 @@ exports.handler = async (event, context) => {
     const text = await finalRes.text();
     let data;
     try { data = JSON.parse(text); } catch (e) { data = { ok:false, error:"Respuesta no JSON del Apps Script", raw:text }; }
+    // DIAGNOSTICO TEMPORAL: confirma si este deploy tiene el fix del redirect
+    // y si realmente hubo un redirect que seguir a mano.
+    data._diagRedirectFixDeployed = true;
+    data._diagStatusInicial = res.status;
 
     return {
       statusCode: 200,
