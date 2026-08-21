@@ -281,9 +281,27 @@ function findStockRowBySku_(shStock, sku) {
  * STOCK (ya se validó antes con VALIDAR_SKU_EN_STOCK, pero por las dudas
  * se ignora silenciosamente en vez de tirar error acá).
  */
-function descontarStockPorRemito_(shStock, vrLineas) {
+function descontarStockPorRemito_(shStock, vrLineas, nroRemito) {
   const map = getStockMap_(shStock);
   if (map.idxEntregado < 0 && map.idxStockActual < 0) return; // hoja sin esas columnas
+
+  // Guard de idempotencia con CacheService (capa totalmente aparte de
+  // Sheets): si el stock de este remito ya se descontó, no se vuelve a
+  // aplicar. Esto protege contra cualquier reintento duplicado —de red,
+  // de Apps Script o de la propia API de Sheets— que haga que esta
+  // función termine llamándose más de una vez para el mismo remito
+  // (se detectó en producción que Entregado/StockActual quedaban
+  // descontados el doble, sin que el log de Ejecuciones mostrara una
+  // segunda ejecución de doPost).
+  if (nroRemito) {
+    const cache = CacheService.getScriptCache();
+    const cacheKey = 'stockAplicado_' + nroRemito;
+    if (cache.get(cacheKey)) {
+      Logger.log('descontarStockPorRemito_: stock ya aplicado antes para ' + nroRemito + ', se omite.');
+      return;
+    }
+    cache.put(cacheKey, '1', 21600); // 6 horas
+  }
 
   const cantidadPorSku = {};
   for (let i = 0; i < vrLineas.length; i++) {
@@ -1283,7 +1301,7 @@ function doPost(e) {
     // Descontar del STOCK lo entregado en este remito (Entregado +cant,
     // StockActual -cant). Ver descontarStockPorRemito_.
     try {
-      descontarStockPorRemito_(shStock, vr);
+      descontarStockPorRemito_(shStock, vr, nro);
     } catch (eStock) {
       Logger.log('Error descontando stock del remito ' + nro + ': ' + eStock);
     }
