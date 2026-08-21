@@ -270,6 +270,46 @@ function findStockRowBySku_(shStock, sku) {
   return -1;
 }
 
+/**
+ * Descuenta stock cuando se registra un remito: por cada línea válida
+ * ([nro, sku, descripcion, tipo, marca, cantidad], el mismo formato que
+ * arma doPost antes de escribir DETALLEREMITOS), suma la cantidad
+ * entregada a la columna "Entregado" y la resta de "StockActual" del SKU
+ * correspondiente en STOCK. Si el mismo SKU aparece en varias líneas del
+ * remito, se agrupan para hacer una sola lectura/escritura por SKU.
+ * No frena el registro del remito si un SKU puntual no se encuentra en
+ * STOCK (ya se validó antes con VALIDAR_SKU_EN_STOCK, pero por las dudas
+ * se ignora silenciosamente en vez de tirar error acá).
+ */
+function descontarStockPorRemito_(shStock, vrLineas) {
+  const map = getStockMap_(shStock);
+  if (map.idxEntregado < 0 && map.idxStockActual < 0) return; // hoja sin esas columnas
+
+  const cantidadPorSku = {};
+  for (let i = 0; i < vrLineas.length; i++) {
+    const sku = String(vrLineas[i][1] || '').trim();
+    const cant = Number(vrLineas[i][5] || 0);
+    if (!sku || !(cant > 0)) continue;
+    cantidadPorSku[sku] = (cantidadPorSku[sku] || 0) + cant;
+  }
+
+  Object.keys(cantidadPorSku).forEach(function (sku) {
+    const row = findStockRowBySku_(shStock, sku);
+    if (row === -1) return; // SKU no encontrado, no hay nada que descontar
+
+    const cant = cantidadPorSku[sku];
+
+    if (map.idxEntregado >= 0) {
+      const entregadoActual = Number(shStock.getRange(row, map.idxEntregado + 1).getValue() || 0);
+      shStock.getRange(row, map.idxEntregado + 1).setValue(entregadoActual + cant);
+    }
+    if (map.idxStockActual >= 0) {
+      const stockActual = Number(shStock.getRange(row, map.idxStockActual + 1).getValue() || 0);
+      shStock.getRange(row, map.idxStockActual + 1).setValue(stockActual - cant);
+    }
+  });
+}
+
 /* ==========================================================
  * DRIVE / PDF helpers
  * ========================================================== */
@@ -1223,6 +1263,14 @@ function doPost(e) {
     }
 
     shDet.getRange(shDet.getLastRow() + 1, 1, vr.length, 6).setValues(vr);
+
+    // Descontar del STOCK lo entregado en este remito (Entregado +cant,
+    // StockActual -cant). Ver descontarStockPorRemito_.
+    try {
+      descontarStockPorRemito_(shStock, vr);
+    } catch (eStock) {
+      Logger.log('Error descontando stock del remito ' + nro + ': ' + eStock);
+    }
 
     /* -------------------------
      * PDF: si viene en la misma llamada, se guarda acá. Si no, el front
