@@ -80,13 +80,30 @@ exports.handler = async (event, context) => {
 
     payload.token = API_TOKEN;
 
+    // IMPORTANTE: Apps Script responde a un POST con un redirect 302 hacia
+    // script.googleusercontent.com. Si dejamos que fetch lo siga
+    // automáticamente, algunos runtimes re-envían el POST (con su body)
+    // a esa segunda URL, lo que hace que doPost() se ejecute DOS VECES
+    // para una sola llamada del cliente (visto en producción: remitos con
+    // stock descontado el doble). Por eso seguimos el redirect a mano,
+    // con un GET sin body — así el contenido se lee una sola vez y
+    // doPost() corre una sola vez.
     const res = await fetch(APPSCRIPT_URL, {
       method: "POST",
       headers: { "Content-Type": "application/json", "X-Token": API_TOKEN },
-      body: JSON.stringify(payload)
+      body: JSON.stringify(payload),
+      redirect: "manual"
     });
 
-    const text = await res.text();
+    let finalRes = res;
+    if (res.status >= 300 && res.status < 400) {
+      const location = res.headers.get("location");
+      if (location) {
+        finalRes = await fetch(location, { method: "GET" });
+      }
+    }
+
+    const text = await finalRes.text();
     let data;
     try { data = JSON.parse(text); } catch (e) { data = { ok:false, error:"Respuesta no JSON del Apps Script", raw:text }; }
 
