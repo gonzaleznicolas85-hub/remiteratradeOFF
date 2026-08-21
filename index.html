@@ -894,9 +894,9 @@
       document.getElementById('pendingCount').textContent = q.length;
       badge.hidden = q.length === 0;
     }
-    function queueRemito(header, lines){
+    function queueRemito(header, lines, requestId){
       const q = loadQueue();
-      q.push({ header, lines, ts: Date.now() });
+      q.push({ header, lines, ts: Date.now(), requestId });
       saveQueue(q);
       updatePendingBadge();
     }
@@ -913,6 +913,7 @@
           const form = new URLSearchParams();
           form.append('header', JSON.stringify(item.header));
           form.append('lines', JSON.stringify(item.lines));
+          form.append('requestId', item.requestId || '');
           const res = await fetch(PROXY_URL, { method:'POST', body: form });
           const json = await res.json();
           if (!json.ok) break; // error real del backend: se deja en cola para revisar a mano
@@ -973,11 +974,18 @@
         if (!fechaEl.value || !puntoEl.value.trim() || lines.length===0){ msg.textContent='Completá fecha, punto y al menos un ítem con cantidad.'; msg.className='err'; return; }
 
         const header = { fecha: fechaEl.value, punto_venta: puntoEl.value.trim(), usuario: usuarioEl.value.trim(), obs: obsEl.value.trim() };
+        // Id único de este intento de registro. Se manda en cada POST (incluidos
+        // los reintentos de la cola offline) para que el backend pueda detectar
+        // que es el MISMO remito si el envío original ya había impactado en el
+        // Excel pero la respuesta nunca llegó a este dispositivo (corte de red
+        // a mitad de camino). Evita duplicar productos/remitos.
+        const requestId = (window.crypto && crypto.randomUUID) ? crypto.randomUUID() : ('rid_' + Date.now() + '_' + Math.random().toString(36).slice(2));
 
         try {
           const form = new URLSearchParams();
           form.append('header', JSON.stringify(header));
           form.append('lines', JSON.stringify(lines));
+          form.append('requestId', requestId);
 
           const res = await fetch(PROXY_URL, { method:'POST', body: form });
           const json = await res.json();
@@ -995,7 +1003,7 @@
 
           puntoEl.value=''; resetUsuarioField(); obsEl.value=''; tbody.innerHTML=''; addRow(); computeTotal();
         } catch (err) {
-          queueRemito(header, lines);
+          queueRemito(header, lines, requestId);
           msg.textContent = '📴 Sin conexión: el remito se guardó en este dispositivo y se va a enviar solo cuando vuelva la señal.'; msg.className='ok';
           puntoEl.value=''; resetUsuarioField(); obsEl.value=''; tbody.innerHTML=''; addRow(); computeTotal();
         }

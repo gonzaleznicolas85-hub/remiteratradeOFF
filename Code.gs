@@ -287,6 +287,42 @@ function savePdfToDrive_(base64Str, name) {
 }
 
 /**
+ * Asegura que exista la cabecera RequestId y devuelve columna (1-based).
+ * Se usa para deduplicar reintentos de un mismo remito (ver handleCrearRemito_).
+ */
+function ensureRequestIdHeader_(shRemitos) {
+  const lastCol = Math.max(1, shRemitos.getLastColumn());
+  const header  = shRemitos.getRange(1,1,1,lastCol).getValues()[0];
+
+  let colIndex = header.indexOf('RequestId'); // 0-based
+  if (colIndex === -1) {
+    colIndex = header.length;
+    shRemitos.getRange(1, colIndex + 1).setValue('RequestId');
+  }
+  return colIndex + 1; // 1-based
+}
+
+/**
+ * Busca un remito ya registrado con este requestId (columna RequestId de
+ * REMITOS). Devuelve el NroRemito si lo encuentra, o '' si no existe todavía.
+ * Esto evita duplicar el remito cuando el cliente reintenta el envío
+ * (por ejemplo: la red se cae justo cuando Apps Script ya había terminado
+ * de escribir, y el navegador vuelve a mandar el mismo remito desde la cola
+ * offline). Ver knowledge/ si hace falta documentar esto más a fondo.
+ */
+function buscarNroPorRequestId_(shRemitos, colRequestId, requestId) {
+  const last = shRemitos.getLastRow();
+  if (last < 2) return '';
+  const vals = shRemitos.getRange(2, 1, last - 1, colRequestId).getValues();
+  for (let i = 0; i < vals.length; i++) {
+    if (String(vals[i][colRequestId - 1] || '').trim() === requestId) {
+      return String(vals[i][0]).trim();
+    }
+  }
+  return '';
+}
+
+/**
  * Asegura que exista la cabecera PDF_URL y devuelve columna (1-based)
  */
 function ensurePdfUrlHeader_(shRemitos) {
@@ -1119,17 +1155,42 @@ function doPost(e) {
     if (!lines.length)
       return jsonOut({ ok:false, error:'Sin líneas' }, 400);
 
-    const nro = nextRemitoNumber_(shRemitos);
-    const ts  = new Date();
+    const requestId = String(data.requestId || '').trim();
+    const colRequestId = ensureRequestIdHeader_(shRemitos);
 
-    shRemitos.appendRow([
-      nro,
-      fecha,
-      header.punto_venta,
-      header.usuario || '',
-      header.obs || '',
-      ts
-    ]);
+    // Lock para que dos ejecuciones concurrentes (doble tap, reintento de la
+    // cola offline solapado con el envío original, etc.) no pisen la
+    // verificación de duplicado ni generen dos números de remito a la vez.
+    const lock = LockService.getScriptLock();
+    const gotLock = lock.tryLock(30000);
+    if (!gotLock) {
+      return jsonOut({ ok:false, error:'El sistema está ocupado procesando otro remito, reintentá en unos segundos.' }, 429);
+    }
+
+    let nro;
+    try {
+      if (requestId) {
+        const existente = buscarNroPorRequestId_(shRemitos, colRequestId, requestId);
+        if (existente) {
+          // Ya se había registrado este mismo remito antes (reintento tras
+          // corte de red). Devolvemos el mismo número sin duplicar nada.
+          return jsonOut({ ok:true, nroRemito: existente, deduplicado:true });
+        }
+      }
+
+      nro = nextRemitoNumber_(shRemitos);
+      const ts = new Date();
+
+      const rowValues = [nro, fecha, header.punto_venta, header.usuario || '', header.obs || '', ts];
+      // completar columnas intermedias si existieran otras cabeceras entre
+      // Timestamp y RequestId (PDF_URL, etc.) para no desalinear la fila
+      while (rowValues.length < colRequestId - 1) rowValues.push('');
+      rowValues[colRequestId - 1] = requestId;
+
+      shRemitos.appendRow(rowValues);
+    } finally {
+      lock.releaseLock();
+    }
 
     const vr = [];
     const errores = [];
