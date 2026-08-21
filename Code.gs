@@ -294,13 +294,30 @@ function descontarStockPorRemito_(shStock, vrLineas, nroRemito) {
   // descontados el doble, sin que el log de Ejecuciones mostrara una
   // segunda ejecución de doPost).
   if (nroRemito) {
-    const cache = CacheService.getScriptCache();
-    const cacheKey = 'stockAplicado_' + nroRemito;
-    if (cache.get(cacheKey)) {
+    // El chequeo+marcado de la cache se hace bajo lock: sin esto, dos
+    // ejecuciones realmente concurrentes podrían leer la cache vacía
+    // ANTES de que ninguna la haya marcado todavía, y las dos aplicarían
+    // el descuento igual (condición de carrera clásica de check-then-act).
+    const stockLock = LockService.getScriptLock();
+    const gotStockLock = stockLock.tryLock(30000);
+    let yaAplicado = false;
+    if (gotStockLock) {
+      try {
+        const cache = CacheService.getScriptCache();
+        const cacheKey = 'stockAplicado_' + nroRemito;
+        if (cache.get(cacheKey)) {
+          yaAplicado = true;
+        } else {
+          cache.put(cacheKey, '1', 21600); // 6 horas
+        }
+      } finally {
+        stockLock.releaseLock();
+      }
+    }
+    if (yaAplicado) {
       Logger.log('descontarStockPorRemito_: stock ya aplicado antes para ' + nroRemito + ', se omite.');
       return;
     }
-    cache.put(cacheKey, '1', 21600); // 6 horas
   }
 
   const cantidadPorSku = {};
