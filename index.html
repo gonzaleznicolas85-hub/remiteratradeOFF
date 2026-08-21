@@ -991,8 +991,20 @@
           const json = await res.json();
           if (!json.ok) { msg.textContent='❌ ' + (json.error||'Error'); if (json.detalle) msg.textContent += ' | ' + json.detalle.map(d=>d.sku+': '+d.error).join('; '); msg.className='err'; return; }
 
-          msg.textContent='✅ Remito ' + json.nroRemito + ' registrado. Ítems: ' + lines.length; msg.className='ok';
-          openSuccessModal(json.nroRemito, lines.length, header);
+          // Éxito parcial: el backend puede grabar el remito con menos líneas
+          // de las enviadas (SKU inexistente en STOCK, cantidad inválida,
+          // etc.) y devolver igual ok:true junto con el detalle de lo que
+          // no se guardó. Antes esto quedaba oculto: se mostraba "Ítems: N"
+          // con el total enviado aunque algunas líneas nunca llegaran a
+          // DETALLEREMITOS.
+          const itemsGuardados = json.detalle ? lines.length - json.detalle.length : lines.length;
+          if (json.detalle && json.detalle.length) {
+            msg.textContent = '⚠️ Remito ' + json.nroRemito + ' registrado con ' + itemsGuardados + '/' + lines.length + ' ítem(s). No se guardaron: ' + json.detalle.map(d=>d.sku+': '+d.error).join('; ');
+            msg.className = 'err';
+          } else {
+            msg.textContent='✅ Remito ' + json.nroRemito + ' registrado. Ítems: ' + lines.length; msg.className='ok';
+          }
+          openSuccessModal(json.nroRemito, itemsGuardados, header);
 
           try {
             const pdfResp = await generarPdfRemitoServidor(json.nroRemito, header, lines);

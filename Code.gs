@@ -1249,6 +1249,41 @@ function doPost(e) {
     const requestId = String(data.requestId || '').trim();
     const colRequestId = ensureRequestIdHeader_(shRemitos);
 
+    // Validamos las líneas ANTES de tocar REMITOS. Antes este chequeo se
+    // hacía después de crear la fila del remito, así que un remito con
+    // TODAS las líneas inválidas (SKU inexistente en STOCK, cantidad<=0,
+    // etc.) igual quedaba grabado en REMITOS con nro asignado, pero sin
+    // ninguna fila en DETALLEREMITOS — un remito "huérfano". Validar antes
+    // evita crear el remito si no hay ni una línea válida para guardar.
+    const lineasValidas = [];
+    const errores = [];
+
+    for (const l of lines) {
+      const sku  = String(l.sku || '').trim();
+      const cant = Number(l.cantidad || 0);
+
+      if (!sku || !(cant > 0)) {
+        errores.push({ sku, error:'SKU vacío o cantidad inválida' });
+        continue;
+      }
+      if (VALIDAR_SKU_EN_STOCK && !skuExisteEnStock_(shStock, sku)) {
+        errores.push({ sku, error:'SKU no existe en ' + HOJA_STOCK });
+        continue;
+      }
+
+      lineasValidas.push({
+        sku,
+        descripcion: l.descripcion || '',
+        tipo: l.tipo || '',
+        marca: l.marca || '',
+        cantidad: cant
+      });
+    }
+
+    if (!lineasValidas.length) {
+      return jsonOut({ ok:false, error:'Ninguna línea válida', detalle:errores }, 400);
+    }
+
     // Lock para que dos ejecuciones concurrentes (doble tap, reintento de la
     // cola offline solapado con el envío original, etc.) no pisen la
     // verificación de duplicado ni generen dos números de remito a la vez.
@@ -1283,35 +1318,9 @@ function doPost(e) {
       lock.releaseLock();
     }
 
-    const vr = [];
-    const errores = [];
-
-    for (const l of lines) {
-      const sku  = String(l.sku || '').trim();
-      const cant = Number(l.cantidad || 0);
-
-      if (!sku || !(cant > 0)) {
-        errores.push({ sku, error:'SKU vacío o cantidad inválida' });
-        continue;
-      }
-      if (VALIDAR_SKU_EN_STOCK && !skuExisteEnStock_(shStock, sku)) {
-        errores.push({ sku, error:'SKU no existe en ' + HOJA_STOCK });
-        continue;
-      }
-
-      vr.push([
-        nro,
-        sku,
-        l.descripcion || '',
-        l.tipo || '',
-        l.marca || '',
-        cant
-      ]);
-    }
-
-    if (!vr.length) {
-      return jsonOut({ ok:false, error:'Ninguna línea válida', detalle:errores }, 400);
-    }
+    const vr = lineasValidas.map(function (l) {
+      return [nro, l.sku, l.descripcion, l.tipo, l.marca, l.cantidad];
+    });
 
     shDet.getRange(shDet.getLastRow() + 1, 1, vr.length, 6).setValues(vr);
 
