@@ -75,6 +75,7 @@ exports.handler = async (event, context) => {
       if (get("cantidad"))   payload.cantidad = get("cantidad");
       if (get("imagenBase64")) payload.imagenBase64 = get("imagenBase64");
       if (get("imagenName"))   payload.imagenName = get("imagenName");
+      if (get("requestId"))    payload.requestId = get("requestId");
     }
 
     payload.token = API_TOKEN;
