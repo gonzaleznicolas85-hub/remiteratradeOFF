@@ -293,31 +293,36 @@ function descontarStockPorRemito_(shStock, vrLineas) {
     cantidadPorSku[sku] = (cantidadPorSku[sku] || 0) + cant;
   }
 
+  // Entregado y StockActual se leen y escriben en UN SOLO llamado a la API
+  // de Sheets (un getRange/getValues + un setValues por SKU) en vez de 4
+  // llamadas sueltas. Se vio empíricamente que separar la lectura/escritura
+  // de ambas columnas en llamadas independientes podía terminar aplicando
+  // el descuento dos veces (mecanismo no confirmado — posible reintento a
+  // nivel de la API de Sheets); agrupar todo en una sola llamada atómica
+  // por SKU elimina esa superficie de error.
+  const colEntregado = map.idxEntregado >= 0 ? map.idxEntregado + 1 : -1;
+  const colStockActual = map.idxStockActual >= 0 ? map.idxStockActual + 1 : -1;
+  const cols = [colEntregado, colStockActual].filter(function (c) { return c > 0; });
+  const colStart = Math.min.apply(null, cols);
+  const colEnd = Math.max.apply(null, cols);
+
   Object.keys(cantidadPorSku).forEach(function (sku) {
     const row = findStockRowBySku_(shStock, sku);
     if (row === -1) return; // SKU no encontrado, no hay nada que descontar
 
     const cant = cantidadPorSku[sku];
+    const range = shStock.getRange(row, colStart, 1, colEnd - colStart + 1);
+    const vals = range.getValues()[0];
 
-    // Se leen AMBOS valores antes de escribir cualquiera de los dos.
-    // (Leer una celda justo después de escribir otra celda distinta de la
-    // misma fila, dentro de la misma ejecución, puede devolver un estado
-    // intermedio/no confirmado todavía — visto empíricamente: escribir
-    // Entregado y recién ahí leer StockActual traía un valor ya afectado,
-    // duplicando el descuento. Leyendo todo primero se evita el problema.)
-    const entregadoActual = map.idxEntregado >= 0
-      ? Number(shStock.getRange(row, map.idxEntregado + 1).getValue() || 0)
-      : 0;
-    const stockActual = map.idxStockActual >= 0
-      ? Number(shStock.getRange(row, map.idxStockActual + 1).getValue() || 0)
-      : 0;
-
-    if (map.idxEntregado >= 0) {
-      shStock.getRange(row, map.idxEntregado + 1).setValue(entregadoActual + cant);
+    if (colEntregado > 0) {
+      const idx = colEntregado - colStart;
+      vals[idx] = Number(vals[idx] || 0) + cant;
     }
-    if (map.idxStockActual >= 0) {
-      shStock.getRange(row, map.idxStockActual + 1).setValue(stockActual - cant);
+    if (colStockActual > 0) {
+      const idx = colStockActual - colStart;
+      vals[idx] = Number(vals[idx] || 0) - cant;
     }
+    range.setValues([vals]);
   });
 }
 
