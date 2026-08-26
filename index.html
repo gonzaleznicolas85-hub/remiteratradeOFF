@@ -862,13 +862,41 @@
      * Slides con la imagen del remito real, lo guarda en Drive (PDF_URL)
      * y devuelve el PDF en base64 para descargarlo al toque.
      * ========================================================= */
-    async function generarPdfRemitoServidor(nroRemito, header, lines){
-      const res = await fetch(PROXY_URL, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ action:'generarPdfRemito', nroRemito, header, lines })
-      });
-      return res.json();
+    /* Reintenta solo. Armar el PDF implica copiar una presentación de Slides
+       y exportarla, así que es la llamada más lenta y la más propensa a
+       cortarse; un único intento fallido dejaba el remito sin PDF. Si igual
+       no sale, queda el trigger del servidor (generarPDFsPendientes) que lo
+       completa después. */
+    async function generarPdfRemitoServidor(nroRemito, header, lines, maxIntentos){
+      const intentos = maxIntentos || 3;
+      let ultimoError = '';
+      for (let i = 0; i < intentos; i++) {
+        try {
+          const res = await fetch(PROXY_URL, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ action:'generarPdfRemito', nroRemito, header, lines })
+          });
+          const json = await res.json();
+          if (json && json.ok) return json;
+          ultimoError = (json && json.error) || 'el servidor respondió sin ok';
+        } catch (e) {
+          ultimoError = String(e);
+        }
+        if (i < intentos - 1) await new Promise(r => setTimeout(r, 1500 * (i + 1)));
+      }
+      return { ok:false, error: ultimoError };
+    }
+
+    /* El PDF era "best-effort" y los errores se tragaban en silencio: el
+       remito quedaba registrado, el operario veía el tilde verde y nunca se
+       enteraba de que el PDF no se había generado. Ahora se avisa. */
+    function avisarPdfFallido(nroRemito, detalle){
+      const extra = detalle ? (' (' + String(detalle).slice(0, 160) + ')') : '';
+      msg.textContent = (msg.textContent ? msg.textContent + ' ' : '')
+        + '⚠️ El remito ' + nroRemito + ' quedó registrado, pero no se pudo generar el PDF'
+        + extra + '. Se puede regenerar desde la planilla con "Generar TODOS los PDFs pendientes".';
+      msg.className = 'err';
     }
 
     function descargarPdfBase64(base64, filename){
@@ -918,9 +946,13 @@
           const json = await res.json();
           if (!json.ok) break; // error real del backend: se deja en cola para revisar a mano
           q.shift(); saveQueue(q); updatePendingBadge(); syncedCount++;
-          try {
-            await generarPdfRemitoServidor(json.nroRemito, item.header, item.lines);
-          } catch (ePdf) { /* best-effort */ }
+          // Acá no hay nadie mirando la pantalla: si el PDF no sale ni con
+          // reintentos, lo completa el trigger del servidor.
+          if (!json.pdfUrl) {
+            try {
+              await generarPdfRemitoServidor(json.nroRemito, item.header, item.lines);
+            } catch (ePdf) { /* queda para generarPDFsPendientes */ }
+          }
         } catch (err) { break; } // seguimos sin red, se reintenta después
       }
       flushingQueue = false;
@@ -981,6 +1013,9 @@
         // a mitad de camino). Evita duplicar productos/remitos.
         const requestId = (window.crypto && crypto.randomUUID) ? crypto.randomUUID() : ('rid_' + Date.now() + '_' + Math.random().toString(36).slice(2));
 
+        let registrado = false;
+        let nroRegistrado = '';
+
         try {
           const form = new URLSearchParams();
           form.append('header', JSON.stringify(header));
@@ -990,6 +1025,8 @@
           const res = await fetch(PROXY_URL, { method:'POST', body: form });
           const json = await res.json();
           if (!json.ok) { msg.textContent='❌ ' + (json.error||'Error'); if (json.detalle) msg.textContent += ' | ' + json.detalle.map(d=>d.sku+': '+d.error).join('; '); msg.className='err'; return; }
+          registrado = true;
+          nroRegistrado = json.nroRemito;
 
           // Éxito parcial: el backend puede grabar el remito con menos líneas
           // de las enviadas (SKU inexistente en STOCK, cantidad inválida,
@@ -1006,17 +1043,36 @@
           }
           openSuccessModal(json.nroRemito, itemsGuardados, header);
 
+          // El PDF lo arma el servidor DENTRO del mismo POST que registra el
+          // remito, así que normalmente ya viene en json.pdfBase64 y no hace
+          // falta una segunda vuelta (que era justamente donde se perdía el
+          // PDF si el operario cerraba la pestaña o se cortaba la red).
+          // La llamada aparte queda solo como reintento.
           try {
             const pdfResp = await generarPdfRemitoServidor(json.nroRemito, header, lines);
             if (pdfResp && pdfResp.ok && pdfResp.pdfBase64) {
               descargarPdfBase64(pdfResp.pdfBase64, 'Remito_' + json.nroRemito + '.pdf');
+            } else {
+              avisarPdfFallido(json.nroRemito, pdfResp && pdfResp.error);
             }
-          } catch (ePdf) { /* el remito ya quedó registrado igual; el PDF es best-effort */ }
+          } catch (ePdf) {
+            avisarPdfFallido(json.nroRemito, ePdf);
+          }
 
           puntoEl.value=''; resetUsuarioField(); obsEl.value=''; tbody.innerHTML=''; addRow(); computeTotal();
         } catch (err) {
-          queueRemito(header, lines, requestId);
-          msg.textContent = '📴 Sin conexión: el remito se guardó en este dispositivo y se va a enviar solo cuando vuelva la señal.'; msg.className='ok';
+          // Solo se encola si el remito NO llegó a registrarse. Antes este
+          // catch abrazaba todo el bloque posterior al POST, así que un error
+          // cualquiera DESPUÉS de un registro exitoso (armar el modal, el
+          // PDF, limpiar el formulario) mandaba el remito a la cola y se
+          // volvía a enviar: remito y stock duplicados.
+          if (registrado) {
+            msg.textContent = '✅ Remito ' + nroRegistrado + ' registrado, pero hubo un error después: ' + String(err).slice(0, 160);
+            msg.className = 'err';
+          } else {
+            queueRemito(header, lines, requestId);
+            msg.textContent = '📴 Sin conexión: el remito se guardó en este dispositivo y se va a enviar solo cuando vuelva la señal.'; msg.className='ok';
+          }
           puntoEl.value=''; resetUsuarioField(); obsEl.value=''; tbody.innerHTML=''; addRow(); computeTotal();
         }
       } finally {

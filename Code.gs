@@ -10,9 +10,12 @@
  * CONFIG BÁSICA
  * ========================= */
 
-// 🔴 IMPORTANTE: usar SIEMPRE la planilla activa
-const USE_SHEET_ID = false; // <<--- DEJAR EN false
-const SHEET_ID = '132DcPy6GBLqh43TF-e_JO6gdiCgUs0VZuB5NU6I5Wsk'; // se ignora si USE_SHEET_ID = false
+// 🔴 Este script corre SIEMPRE bound a la planilla que lo contiene
+// (la del clon OFF). Antes había acá un par USE_SHEET_ID/SHEET_ID que
+// quedó colgado apuntando a la planilla del proyecto ORIGINAL: estaba
+// inerte porque el flag venía en false, pero si alguien lo ponía en true
+// el OFF empezaba a escribir sobre los datos del original. Se eliminó
+// para que no exista esa posibilidad.
 
 const HOJA_STOCK   = 'STOCK';
 const HOJA_REMITOS = 'REMITOS';
@@ -59,9 +62,6 @@ const BRAND = {
  * HELPERS GENERALES
  * ========================================================== */
 function getSS_() {
-  if (USE_SHEET_ID && SHEET_ID) {
-    return SpreadsheetApp.openById(SHEET_ID);
-  }
   return SpreadsheetApp.getActiveSpreadsheet();
 }
 
@@ -104,18 +104,31 @@ function readPostBody_(e) {
       return JSON.parse(e.postData.contents || '{}');
     }
 
-    const p = { token: e.parameter.token || '', header: {}, lines: [] };
-    if (e.parameter.action)     p.action    = e.parameter.action;
-    if (e.parameter.header)     p.header    = JSON.parse(e.parameter.header);
-    if (e.parameter.lines)      p.lines     = JSON.parse(e.parameter.lines);
-    if (e.parameter.producto)   p.producto  = JSON.parse(e.parameter.producto);
-    if (e.parameter.pdfBase64)  p.pdfBase64 = e.parameter.pdfBase64;
-    if (e.parameter.pdfName)    p.pdfName   = e.parameter.pdfName;
-    if (e.parameter.soloPdf)    p.soloPdf   = (String(e.parameter.soloPdf) === 'true');
-    if (e.parameter.sku)          p.sku          = e.parameter.sku;
-    if (e.parameter.cantidad)     p.cantidad     = e.parameter.cantidad;
-    if (e.parameter.imagenBase64) p.imagenBase64 = e.parameter.imagenBase64;
-    if (e.parameter.imagenName)   p.imagenName   = e.parameter.imagenName;
+    // OJO: acá NO va una whitelist de campos. Antes se listaba parámetro por
+    // parámetro y cada campo nuevo que se agregaba al front se perdía en
+    // silencio si alguien se olvidaba de sumarlo a la lista (ya pasó con
+    // requestId: llegaba del navegador, no se leía acá, y la deduplicación
+    // de remitos quedaba muerta sin ningún error visible). Se copian TODOS
+    // los parámetros y solo se les da tratamiento especial a los que son
+    // JSON serializado o booleanos.
+    const p = { header: {}, lines: [] };
+    Object.keys(e.parameter || {}).forEach(function (k) { p[k] = e.parameter[k]; });
+
+    ['header', 'lines', 'producto'].forEach(function (k) {
+      if (!e.parameter[k]) return;
+      try {
+        p[k] = JSON.parse(e.parameter[k]);
+      } catch (errJson) {
+        // JSON roto: se vuelve al valor por defecto en vez de dejar un
+        // string donde el resto del código espera un objeto/array.
+        p[k] = (k === 'lines') ? [] : {};
+        Logger.log('readPostBody_: no se pudo parsear ' + k + ': ' + errJson);
+      }
+    });
+    p.token = e.parameter.token || '';
+    p.soloPdf = (String(e.parameter.soloPdf || '') === 'true');
+    if (!Array.isArray(p.lines)) p.lines = [];
+    if (!p.header || typeof p.header !== 'object') p.header = {};
     return p;
   } catch (err) {
     throw new Error('No se pudo leer el cuerpo del POST: ' + err);
@@ -281,38 +294,44 @@ function findStockRowBySku_(shStock, sku) {
  * STOCK (ya se validó antes con VALIDAR_SKU_EN_STOCK, pero por las dudas
  * se ignora silenciosamente en vez de tirar error acá).
  */
-function descontarStockPorRemito_(shStock, vrLineas, nroRemito) {
+function descontarStockPorRemito_(shStock, shRemitos, vrLineas, nroRemito) {
   const map = getStockMap_(shStock);
   if (map.idxEntregado < 0 && map.idxStockActual < 0) return; // hoja sin esas columnas
 
-  // Guard de idempotencia con CacheService (capa totalmente aparte de
-  // Sheets): si el stock de este remito ya se descontó, no se vuelve a
-  // aplicar. Esto protege contra cualquier reintento duplicado —de red,
-  // de Apps Script o de la propia API de Sheets— que haga que esta
-  // función termine llamándose más de una vez para el mismo remito
-  // (se detectó en producción que Entregado/StockActual quedaban
-  // descontados el doble, sin que el log de Ejecuciones mostrara una
-  // segunda ejecución de doPost).
+  const colAplicado = shRemitos ? ensureStockAplicadoHeader_(shRemitos) : -1;
+  const rowRemito   = shRemitos ? findRemitoRowByNro_(shRemitos, nroRemito) : -1;
+
+  /* ---------------------------------------------------------------
+   * GUARD DE IDEMPOTENCIA (dos capas)
+   *
+   *  1) Marca DURABLE en REMITOS!StockAplicado. Es la que manda: vive en
+   *     la planilla, no expira y se puede auditar a ojo. Si el remito ya
+   *     tiene fecha ahí, su stock NO se vuelve a descontar nunca.
+   *  2) Marca "en vuelo" en CacheService, para el caso en que dos
+   *     ejecuciones arranquen casi simultáneas y ninguna haya llegado
+   *     todavía a escribir la marca durable.
+   *
+   * El chequeo+marcado va bajo lock: sin eso, dos ejecuciones realmente
+   * concurrentes podrían leer ambas marcas vacías ANTES de que ninguna
+   * las haya escrito, y aplicar el descuento las dos (check-then-act).
+   * --------------------------------------------------------------- */
   if (nroRemito) {
-    // El chequeo+marcado de la cache se hace bajo lock: sin esto, dos
-    // ejecuciones realmente concurrentes podrían leer la cache vacía
-    // ANTES de que ninguna la haya marcado todavía, y las dos aplicarían
-    // el descuento igual (condición de carrera clásica de check-then-act).
-    const stockLock = LockService.getScriptLock();
-    const gotStockLock = stockLock.tryLock(30000);
+    const lock = LockService.getScriptLock();
+    const gotLock = lock.tryLock(30000);
     let yaAplicado = false;
-    if (gotStockLock) {
-      try {
+    try {
+      if (rowRemito > 0 && colAplicado > 0) {
+        const marca = shRemitos.getRange(rowRemito, colAplicado).getValue();
+        if (String(marca || '').trim()) yaAplicado = true;
+      }
+      if (!yaAplicado) {
         const cache = CacheService.getScriptCache();
         const cacheKey = 'stockAplicado_' + nroRemito;
-        if (cache.get(cacheKey)) {
-          yaAplicado = true;
-        } else {
-          cache.put(cacheKey, '1', 21600); // 6 horas
-        }
-      } finally {
-        stockLock.releaseLock();
+        if (cache.get(cacheKey)) yaAplicado = true;
+        else cache.put(cacheKey, '1', 21600); // 6 h (máximo de CacheService)
       }
+    } finally {
+      if (gotLock) lock.releaseLock();
     }
     if (yaAplicado) {
       Logger.log('descontarStockPorRemito_: stock ya aplicado antes para ' + nroRemito + ', se omite.');
@@ -328,37 +347,64 @@ function descontarStockPorRemito_(shStock, vrLineas, nroRemito) {
     cantidadPorSku[sku] = (cantidadPorSku[sku] || 0) + cant;
   }
 
-  // Entregado y StockActual se leen y escriben en UN SOLO llamado a la API
-  // de Sheets (un getRange/getValues + un setValues por SKU) en vez de 4
-  // llamadas sueltas. Se vio empíricamente que separar la lectura/escritura
-  // de ambas columnas en llamadas independientes podía terminar aplicando
-  // el descuento dos veces (mecanismo no confirmado — posible reintento a
-  // nivel de la API de Sheets); agrupar todo en una sola llamada atómica
-  // por SKU elimina esa superficie de error.
-  const colEntregado = map.idxEntregado >= 0 ? map.idxEntregado + 1 : -1;
-  const colStockActual = map.idxStockActual >= 0 ? map.idxStockActual + 1 : -1;
-  const cols = [colEntregado, colStockActual].filter(function (c) { return c > 0; });
-  const colStart = Math.min.apply(null, cols);
-  const colEnd = Math.max.apply(null, cols);
+  const colInicial   = map.idxStockInicial >= 0 ? map.idxStockInicial + 1 : -1;
+  const colEntregado = map.idxEntregado    >= 0 ? map.idxEntregado    + 1 : -1;
+  const colActual    = map.idxStockActual  >= 0 ? map.idxStockActual  + 1 : -1;
+
+  // Se LEE un rango que cubre StockInicial..Entregado..StockActual de una
+  // sola vez, y se ESCRIBE solo el tramo Entregado..StockActual: así no se
+  // pisa StockInicial (que es una carga manual) y, sobre todo, no se lee
+  // ninguna celda después de haber escrito otra de la misma fila.
+  const colsLeer = [colInicial, colEntregado, colActual].filter(function (c) { return c > 0; });
+  const colsEscribir = [colEntregado, colActual].filter(function (c) { return c > 0; });
+  const readStart  = Math.min.apply(null, colsLeer);
+  const readEnd    = Math.max.apply(null, colsLeer);
+  const writeStart = Math.min.apply(null, colsEscribir);
+  const writeEnd   = Math.max.apply(null, colsEscribir);
 
   Object.keys(cantidadPorSku).forEach(function (sku) {
     const row = findStockRowBySku_(shStock, sku);
     if (row === -1) return; // SKU no encontrado, no hay nada que descontar
 
     const cant = cantidadPorSku[sku];
-    const range = shStock.getRange(row, colStart, 1, colEnd - colStart + 1);
-    const vals = range.getValues()[0];
+    const leidos = shStock.getRange(row, readStart, 1, readEnd - readStart + 1).getValues()[0];
+    const val = function (col) { return Number(leidos[col - readStart] || 0); };
 
-    if (colEntregado > 0) {
-      const idx = colEntregado - colStart;
-      vals[idx] = Number(vals[idx] || 0) + cant;
+    let entregadoNuevo = null;
+    let actualNuevo = null;
+
+    if (colEntregado > 0) entregadoNuevo = val(colEntregado) + cant;
+
+    if (colActual > 0) {
+      if (colInicial > 0 && entregadoNuevo !== null) {
+        // StockActual se recalcula SIEMPRE de forma ABSOLUTA a partir de
+        // StockInicial - Entregado, nunca como "el StockActual que había
+        // menos la cantidad". Esto lo vuelve idempotente por construcción:
+        // aplicar el mismo remito dos veces da el mismo número, y además
+        // es inmune a que la columna tenga una fórmula que se recalcule
+        // sola al escribir Entregado (que es lo que hacía que el descuento
+        // impactara dos veces).
+        actualNuevo = val(colInicial) - entregadoNuevo;
+      } else {
+        actualNuevo = val(colActual) - cant;
+      }
     }
-    if (colStockActual > 0) {
-      const idx = colStockActual - colStart;
-      vals[idx] = Number(vals[idx] || 0) - cant;
+
+    const escribir = [];
+    for (let c = writeStart; c <= writeEnd; c++) {
+      if (c === colEntregado)    escribir.push(entregadoNuevo);
+      else if (c === colActual)  escribir.push(actualNuevo);
+      else                       escribir.push(leidos[c - readStart]); // columna intermedia: se deja igual
     }
-    range.setValues([vals]);
+    shStock.getRange(row, writeStart, 1, escribir.length).setValues([escribir]);
   });
+
+  // Recién acá se sella la marca durable: si algo explotó a mitad del
+  // descuento, el remito queda SIN marcar y se puede reprocesar a mano
+  // (la marca de cache lo frena por 6 h, no para siempre).
+  if (rowRemito > 0 && colAplicado > 0) {
+    shRemitos.getRange(rowRemito, colAplicado).setValue(new Date());
+  }
 }
 
 /* ==========================================================
@@ -414,6 +460,42 @@ function buscarNroPorRequestId_(shRemitos, colRequestId, requestId) {
 }
 
 /**
+ * Asegura que exista la cabecera StockAplicado en REMITOS y devuelve su
+ * columna (1-based). Es la marca DURABLE de idempotencia del descuento de
+ * stock: una vez que un remito tiene fecha acá, su stock no se vuelve a
+ * descontar nunca, aunque doPost se ejecute de nuevo para el mismo Nº.
+ * A diferencia de CacheService (que expira a las 6 h y se puede desalojar),
+ * esta marca vive en la planilla y es auditable a ojo.
+ */
+function ensureStockAplicadoHeader_(shRemitos) {
+  const lastCol = Math.max(1, shRemitos.getLastColumn());
+  const header  = shRemitos.getRange(1,1,1,lastCol).getValues()[0];
+
+  let colIndex = header.indexOf('StockAplicado'); // 0-based
+  if (colIndex === -1) {
+    colIndex = header.length;
+    shRemitos.getRange(1, colIndex + 1).setValue('StockAplicado');
+  }
+  return colIndex + 1; // 1-based
+}
+
+/**
+ * Fila (1-based) de un remito en REMITOS buscando por NroRemito (columna A).
+ * Devuelve -1 si no existe.
+ */
+function findRemitoRowByNro_(shRemitos, nro) {
+  const buscado = String(nro || '').trim();
+  if (!buscado) return -1;
+  const last = shRemitos.getLastRow();
+  if (last < 2) return -1;
+  const vals = shRemitos.getRange(2, 1, last - 1, 1).getValues();
+  for (let i = 0; i < vals.length; i++) {
+    if (String(vals[i][0]).trim() === buscado) return i + 2;
+  }
+  return -1;
+}
+
+/**
  * Asegura que exista la cabecera PDF_URL y devuelve columna (1-based)
  */
 function ensurePdfUrlHeader_(shRemitos) {
@@ -441,14 +523,7 @@ function handleAttachPdf_(shRemitos, data) {
   if (!nro) return jsonOut({ ok:false, error:'Falta nroRemito' }, 400);
   if (!pdfBase64) return jsonOut({ ok:false, error:'Falta pdfBase64' }, 400);
 
-  const last = shRemitos.getLastRow();
-  let row = -1;
-  if (last >= 2) {
-    const vals = shRemitos.getRange(2, 1, last - 1, 1).getValues();
-    for (let i = 0; i < vals.length; i++) {
-      if (String(vals[i][0]).trim() === nro) { row = i + 2; break; }
-    }
-  }
+  const row = findRemitoRowByNro_(shRemitos, nro);
   if (row === -1) return jsonOut({ ok:false, error:'Remito no encontrado: ' + nro }, 404);
 
   const url = savePdfToDrive_(pdfBase64, pdfName);
@@ -592,14 +667,7 @@ function handleGenerarPdfRemito_(shRemitos, data) {
     return jsonOut({ ok:false, error:'Error generando PDF: ' + eGen }, 500);
   }
 
-  const last = shRemitos.getLastRow();
-  let row = -1;
-  if (last >= 2) {
-    const vals = shRemitos.getRange(2, 1, last - 1, 1).getValues();
-    for (let i = 0; i < vals.length; i++) {
-      if (String(vals[i][0]).trim() === nro) { row = i + 2; break; }
-    }
-  }
+  const row = findRemitoRowByNro_(shRemitos, nro);
   if (row !== -1) {
     const colPdf = ensurePdfUrlHeader_(shRemitos);
     shRemitos.getRange(row, colPdf).setValue(result.pdfUrl);
@@ -850,6 +918,29 @@ function generarPDFsPendientes() {
   }
 }
 
+/**
+ * Red de seguridad del PDF. Instalar UNA VEZ desde el editor de Apps Script
+ * (o desde el menú 📦 Remitos de la planilla): deja un trigger por tiempo
+ * que cada 5 minutos completa el PDF de cualquier remito que haya quedado
+ * con PDF_URL vacío.
+ *
+ * Por qué hace falta: el PDF lo dispara el navegador después de registrar
+ * el remito. Si el operario cierra la pestaña, se queda sin señal justo en
+ * ese momento, o la cola offline sincroniza con nadie mirando la pantalla,
+ * esa segunda llamada nunca sale y el remito queda sin PDF para siempre.
+ * Con el trigger, el PDF aparece igual sin que nadie haga nada.
+ *
+ * Es idempotente: borra el trigger anterior de esta misma función antes de
+ * crear el nuevo, así no se acumulan duplicados si se corre varias veces.
+ */
+function instalarTriggerPdfsPendientes() {
+  ScriptApp.getProjectTriggers().forEach(function (t) {
+    if (t.getHandlerFunction() === 'generarPDFsPendientes') ScriptApp.deleteTrigger(t);
+  });
+  ScriptApp.newTrigger('generarPDFsPendientes').timeBased().everyMinutes(5).create();
+  Logger.log('Trigger de generarPDFsPendientes instalado (cada 5 minutos).');
+}
+
 /* ==========================================================
  * MENÚ EN GOOGLE SHEETS
  * ========================================================== */
@@ -860,6 +951,8 @@ function onOpen() {
     .createMenu('📦 Remitos')
     .addItem('Generar PDF del remito seleccionado', 'menuGenerarPDFSeleccionado')
     .addItem('Generar TODOS los PDFs pendientes', 'generarPDFsPendientes')
+    .addSeparator()
+    .addItem('Instalar auto-generación de PDFs (cada 5 min)', 'instalarTriggerPdfsPendientes')
     .addToUi();
 }
 
@@ -1324,26 +1417,40 @@ function doPost(e) {
 
     shDet.getRange(shDet.getLastRow() + 1, 1, vr.length, 6).setValues(vr);
 
+    // Fila real del remito recién creado. NO se usa shRemitos.getLastRow()
+    // para escribirle nada: si entre medio entró otro remito, esa última
+    // fila ya no es la nuestra y terminaríamos pisando el remito ajeno.
+    const rowRemito = findRemitoRowByNro_(shRemitos, nro);
+
     // Descontar del STOCK lo entregado en este remito (Entregado +cant,
-    // StockActual -cant). Ver descontarStockPorRemito_.
+    // StockActual = StockInicial - Entregado). Ver descontarStockPorRemito_.
     try {
-      descontarStockPorRemito_(shStock, vr, nro);
+      descontarStockPorRemito_(shStock, shRemitos, vr, nro);
     } catch (eStock) {
       Logger.log('Error descontando stock del remito ' + nro + ': ' + eStock);
     }
 
     /* -------------------------
-     * PDF: si viene en la misma llamada, se guarda acá. Si no, el front
-     * arma el PDF con el nuevo modelo (plantilla) una vez que ya conoce
-     * el nroRemito real, y lo adjunta aparte con action:'attachPdf'.
-     * Ya no se autogenera el PDF viejo (Google Docs) en este paso.
+     * PDF — NO se arma acá adentro.
+     *
+     * Tentador sería generarlo dentro de este mismo doPost, pero la llamada
+     * entra por una Netlify Function y esas cortan a los 10 s: registrar el
+     * remito (~2-3 s) + copiar la plantilla de Slides y exportar el PDF
+     * (~5-10 s) se pasa del presupuesto, y el timeout haría fallar el
+     * REGISTRO del remito, que es lo único que no se puede perder.
+     *
+     * El PDF se pide aparte (action:'generarPdfRemito'), con reintentos del
+     * lado del navegador. Y para que no dependa de que el navegador siga
+     * vivo, hay una red de seguridad en el servidor: el trigger de
+     * generarPDFsPendientes() (ver instalarTriggerPdfsPendientes) que cada
+     * pocos minutos completa cualquier remito que haya quedado sin PDF_URL.
      * ------------------------- */
     let pdfUrl = '';
 
     if (pdfBase64) {
       const colPdf = ensurePdfUrlHeader_(shRemitos);
       pdfUrl = savePdfToDrive_(pdfBase64, pdfName);
-      shRemitos.getRange(shRemitos.getLastRow(), colPdf).setValue(pdfUrl);
+      if (rowRemito > 0) shRemitos.getRange(rowRemito, colPdf).setValue(pdfUrl);
     }
 
     const resp = { ok:true, nroRemito:nro };
@@ -1460,13 +1567,32 @@ function handleSumarStock_(shStock, data) {
   const map = getStockMap_(shStock);
 
   if (cantidad > 0) {
-    if (map.idxStockInicial >= 0) {
-      const actual = Number(shStock.getRange(row, map.idxStockInicial + 1).getValue() || 0);
-      shStock.getRange(row, map.idxStockInicial + 1).setValue(actual + cantidad);
-    }
-    if (map.idxStockActual >= 0) {
-      const actual = Number(shStock.getRange(row, map.idxStockActual + 1).getValue() || 0);
-      shStock.getRange(row, map.idxStockActual + 1).setValue(actual + cantidad);
+    // Mismo criterio que descontarStockPorRemito_: se leen StockInicial,
+    // Entregado y StockActual ANTES de escribir nada, y StockActual se
+    // recalcula absoluto (StockInicial - Entregado). Antes se escribía
+    // StockInicial y recién después se leía StockActual, así que si esa
+    // columna tenía fórmula ya venía recalculada y se le volvía a sumar
+    // la cantidad: el ingreso impactaba dos veces.
+    const colInicial   = map.idxStockInicial >= 0 ? map.idxStockInicial + 1 : -1;
+    const colEntregado = map.idxEntregado    >= 0 ? map.idxEntregado    + 1 : -1;
+    const colActual    = map.idxStockActual  >= 0 ? map.idxStockActual  + 1 : -1;
+    const colsLeer = [colInicial, colEntregado, colActual].filter(function (c) { return c > 0; });
+
+    if (colsLeer.length) {
+      const readStart = Math.min.apply(null, colsLeer);
+      const readEnd   = Math.max.apply(null, colsLeer);
+      const leidos = shStock.getRange(row, readStart, 1, readEnd - readStart + 1).getValues()[0];
+      const val = function (col) { return Number(leidos[col - readStart] || 0); };
+
+      const inicialNuevo = colInicial > 0 ? val(colInicial) + cantidad : null;
+      let actualNuevo = null;
+      if (colActual > 0) {
+        if (colInicial > 0 && colEntregado > 0) actualNuevo = inicialNuevo - val(colEntregado);
+        else actualNuevo = val(colActual) + cantidad;
+      }
+
+      if (inicialNuevo !== null) shStock.getRange(row, colInicial).setValue(inicialNuevo);
+      if (actualNuevo  !== null) shStock.getRange(row, colActual).setValue(actualNuevo);
     }
   }
 
