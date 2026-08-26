@@ -294,7 +294,7 @@ function findStockRowBySku_(shStock, sku) {
  * STOCK (ya se validó antes con VALIDAR_SKU_EN_STOCK, pero por las dudas
  * se ignora silenciosamente en vez de tirar error acá).
  */
-function descontarStockPorRemito_(shStock, shRemitos, vrLineas, nroRemito) {
+function descontarStockPorRemito_(shStock, shRemitos, vrLineas, nroRemito, requestId) {
   const map = getStockMap_(shStock);
   if (map.idxEntregado < 0 && map.idxStockActual < 0) return; // hoja sin esas columnas
 
@@ -326,7 +326,11 @@ function descontarStockPorRemito_(shStock, shRemitos, vrLineas, nroRemito) {
       }
       if (!yaAplicado) {
         const cache = CacheService.getScriptCache();
-        const cacheKey = 'stockAplicado_' + nroRemito;
+        // La clave se arma con el requestId (UUID unico por envio), NO con el
+        // nroRemito: los numeros de remito se REUTILIZAN si se limpia la hoja
+        // (vuelven a empezar en R0001), y una entrada vieja de cache con ese
+        // mismo numero hacia que el descuento se saltara silenciosamente.
+        const cacheKey = 'stockAplicado_' + (requestId || ('nro_' + nroRemito));
         if (cache.get(cacheKey)) yaAplicado = true;
         else cache.put(cacheKey, '1', 21600); // 6 h (máximo de CacheService)
       }
@@ -1425,7 +1429,7 @@ function doPost(e) {
     // Descontar del STOCK lo entregado en este remito (Entregado +cant,
     // StockActual = StockInicial - Entregado). Ver descontarStockPorRemito_.
     try {
-      descontarStockPorRemito_(shStock, shRemitos, vr, nro);
+      descontarStockPorRemito_(shStock, shRemitos, vr, nro, requestId);
     } catch (eStock) {
       Logger.log('Error descontando stock del remito ' + nro + ': ' + eStock);
     }
