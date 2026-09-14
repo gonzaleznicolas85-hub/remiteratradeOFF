@@ -351,6 +351,7 @@
           <div class="note" style="margin:0">Stock real, en vivo desde tu Google Sheet.</div>
           <div class="actions" style="width:auto">
             <button class="btn btn-ghost" id="stockClearFilters">Limpiar filtros</button>
+            <button class="btn btn-ghost" id="stockExport" style="width:auto">⬇ Exportar</button>
             <button class="btn btn-ghost" id="stockRefresh" style="width:auto">↻ Actualizar</button>
           </div>
         </div>
@@ -1321,16 +1322,14 @@
       return iso ? iso : '<span class="muted">—</span>';
     }
 
-    function renderStockTable(){
-      const body = document.getElementById('stockBody');
-      const countEl = document.getElementById('stockCount');
-      const q = document.getElementById('stockSearch').value.trim().toLowerCase();
+    function getStockFiltrado(){
+      const q =document.getElementById('stockSearch').value.trim().toLowerCase();
       const tipo = document.getElementById('stockTipo').value;
       const marca = document.getElementById('stockMarca').value;
       const bajo = document.getElementById('stockBajo').value;
       const qr = document.getElementById('stockQr').value;
 
-      const filtered = stockData.filter(r => {
+      return stockData.filter(r => {
         if (q && !(String(r.sku).toLowerCase().includes(q) || String(r.descripcion).toLowerCase().includes(q))) return false;
         if (tipo && r.tipo !== tipo) return false;
         if (marca && r.marca !== marca) return false;
@@ -1339,6 +1338,12 @@
         if (qr === 'vacio' ? (r.qr === 'SI' || r.qr === 'NO') : (qr && r.qr !== qr)) return false;
         return true;
       });
+    }
+
+    function renderStockTable(){
+      const body = document.getElementById('stockBody');
+      const countEl = document.getElementById('stockCount');
+      const filtered = getStockFiltrado();
 
       if (!filtered.length){ body.innerHTML = '<tr><td colspan="10" class="muted">Sin resultados.</td></tr>'; countEl.textContent = '0 productos'; return; }
 
@@ -1360,6 +1365,37 @@
       `).join('');
       countEl.textContent = filtered.length + ' de ' + stockData.length + ' productos';
     }
+
+    /* Exporta lo que se ve en la tabla (con los filtros aplicados) a CSV.
+     * Separador ';' y BOM UTF-8 para que Excel en español lo abra con columnas y acentos bien. */
+    function exportarStockCsv(){
+      const filtered = getStockFiltrado();
+      if (!filtered.length) { alert('No hay productos para exportar con los filtros actuales.'); return; }
+
+      const celda = (v) => {
+        const s = String(v == null ? '' : v);
+        return /[";\r\n]/.test(s) ? '"' + s.replace(/"/g, '""') + '"' : s;
+      };
+      const fecha = (iso) => { const m = String(iso || '').match(/^(\d{4})-(\d{2})-(\d{2})$/); return m ? m[3] + '/' + m[2] + '/' + m[1] : (iso || ''); };
+      const qrTexto = (qr) => qr === 'SI' ? 'Sí' : qr === 'NO' ? 'No' : '';
+
+      const lineas = [
+        ['SKU','Descripción','Tipo','Marca','Fecha primer ingreso','QR','Stock inicial','Entregado','Stock actual'].join(';'),
+        ...filtered.map(r => [r.sku, r.descripcion, r.tipo, r.marca, fecha(r.fechaIngreso), qrTexto(r.qr), r.stockInicial, r.entregado, r.stockActual].map(celda).join(';'))
+      ];
+
+      const blob = new Blob(['﻿' + lineas.join('\r\n')], { type: 'text/csv;charset=utf-8' });
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement('a');
+      link.href = url;
+      link.download = 'Stock_' + altaHoyISO() + '.csv';
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+      setTimeout(() => URL.revokeObjectURL(url), 1000);
+    }
+
+    document.getElementById('stockExport').onclick = (e) => { e.preventDefault(); exportarStockCsv(); };
 
     document.getElementById('stockSearch').addEventListener('input', _debounce(renderStockTable, 200));
     document.getElementById('stockTipo').addEventListener('change', renderStockTable);
