@@ -490,6 +490,7 @@
           <div class="note" style="margin:0">Catálogo completo: foto, descripción y cantidad real de cada SKU.</div>
           <div class="actions" style="width:auto">
             <button class="btn btn-ghost" id="catalogoClearFilters">Limpiar filtros</button>
+            <button class="btn btn-ghost" id="catalogoExport" style="width:auto">⬇ Exportar</button>
             <button class="btn btn-ghost" id="catalogoRefresh" style="width:auto">↻ Actualizar</button>
           </div>
         </div>
@@ -1366,10 +1367,9 @@
       countEl.textContent = filtered.length + ' de ' + stockData.length + ' productos';
     }
 
-    /* Exporta lo que se ve en la tabla (con los filtros aplicados) a CSV.
+    /* Exporta productos (lo que se ve en Stock o en Catálogo, con los filtros aplicados) a CSV.
      * Separador ';' y BOM UTF-8 para que Excel en español lo abra con columnas y acentos bien. */
-    function exportarStockCsv(){
-      const filtered = getStockFiltrado();
+    function exportarStockCsv(filtered, prefijoArchivo){
       if (!filtered.length) { alert('No hay productos para exportar con los filtros actuales.'); return; }
 
       const celda = (v) => {
@@ -1380,22 +1380,22 @@
       const qrTexto = (qr) => qr === 'SI' ? 'Sí' : qr === 'NO' ? 'No' : '';
 
       const lineas = [
-        ['SKU','Descripción','Tipo','Marca','Fecha primer ingreso','QR','Stock inicial','Entregado','Stock actual'].join(';'),
-        ...filtered.map(r => [r.sku, r.descripcion, r.tipo, r.marca, fecha(r.fechaIngreso), qrTexto(r.qr), r.stockInicial, r.entregado, r.stockActual].map(celda).join(';'))
+        ['SKU','Descripción','Tipo','Marca','Medidas','Fecha primer ingreso','QR','Stock inicial','Entregado','Stock actual'].join(';'),
+        ...filtered.map(r => [r.sku, r.descripcion, r.tipo, r.marca, r.medidas, fecha(r.fechaIngreso), qrTexto(r.qr), r.stockInicial, r.entregado, r.stockActual].map(celda).join(';'))
       ];
 
       const blob = new Blob(['﻿' + lineas.join('\r\n')], { type: 'text/csv;charset=utf-8' });
       const url = URL.createObjectURL(blob);
       const link = document.createElement('a');
       link.href = url;
-      link.download = 'Stock_' + altaHoyISO() + '.csv';
+      link.download = prefijoArchivo + '_' + altaHoyISO() + '.csv';
       document.body.appendChild(link);
       link.click();
       link.remove();
       setTimeout(() => URL.revokeObjectURL(url), 1000);
     }
 
-    document.getElementById('stockExport').onclick = (e) => { e.preventDefault(); exportarStockCsv(); };
+    document.getElementById('stockExport').onclick = (e) => { e.preventDefault(); exportarStockCsv(getStockFiltrado(), 'Stock'); };
 
     document.getElementById('stockSearch').addEventListener('input', _debounce(renderStockTable, 200));
     document.getElementById('stockTipo').addEventListener('change', renderStockTable);
@@ -1459,10 +1459,8 @@
       tipoSel.value = prevTipo; marcaSel.value = prevMarca;
     }
 
-    function renderCatalogo(){
-      const grid = document.getElementById('catalogoGrid');
-      const countEl = document.getElementById('catalogoCount');
-      const q = document.getElementById('catalogoSearch').value.trim().toLowerCase();
+    function getCatalogoFiltrado(){
+      const q =document.getElementById('catalogoSearch').value.trim().toLowerCase();
       const tipo = document.getElementById('catalogoTipo').value;
       const marca = document.getElementById('catalogoMarca').value;
       const conFoto = document.getElementById('catalogoConFoto').value;
@@ -1475,7 +1473,7 @@
       const ingresoDesde = document.getElementById('catalogoIngresoDesde').value;
       const ingresoHasta = document.getElementById('catalogoIngresoHasta').value;
 
-      const filtered = stockData.filter(r => {
+      return stockData.filter(r => {
         if (q && !(String(r.sku).toLowerCase().includes(q) || String(r.descripcion).toLowerCase().includes(q))) return false;
         if (tipo && r.tipo !== tipo) return false;
         if (marca && r.marca !== marca) return false;
@@ -1496,6 +1494,12 @@
         if (ingresoHasta && r.fechaIngreso > ingresoHasta) return false;
         return true;
       });
+    }
+
+    function renderCatalogo(){
+      const grid = document.getElementById('catalogoGrid');
+      const countEl = document.getElementById('catalogoCount');
+      const filtered = getCatalogoFiltrado();
 
       if (!filtered.length){ grid.innerHTML = '<div class="muted">Sin resultados.</div>'; countEl.textContent = '0 productos'; catalogModalList = []; return; }
 
@@ -1525,6 +1529,7 @@
     document.getElementById('catalogoQr').addEventListener('change', renderCatalogo);
     document.getElementById('catalogoIngresoDesde').addEventListener('change', renderCatalogo);
     document.getElementById('catalogoIngresoHasta').addEventListener('change', renderCatalogo);
+    document.getElementById('catalogoExport').onclick = (e) => { e.preventDefault(); exportarStockCsv(getCatalogoFiltrado(), 'Catalogo'); };
     document.getElementById('catalogoRefresh').onclick = (e) => { e.preventDefault(); ensureStockLoaded(true).then(() => { fillCatalogoFilterOptions(); renderCatalogo(); }); };
     document.getElementById('catalogoClearFilters').onclick = (e) => {
       e.preventDefault();
