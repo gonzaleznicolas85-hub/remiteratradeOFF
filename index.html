@@ -481,6 +481,16 @@
             <option value="con">Solo con foto</option>
             <option value="sin">Solo sin foto</option>
           </select>
+          <select id="catalogoCantidad">
+            <option value="">Cantidad (todas)</option>
+            <option value="con">Con stock (&gt;0)</option>
+            <option value="bajo">Stock bajo (1 a 5)</option>
+            <option value="cero">Sin stock (0)</option>
+            <option value="mas5">Más de 5</option>
+            <option value="mas20">Más de 20</option>
+          </select>
+          <input type="number" id="catalogoCantMin" placeholder="Cantidad mínima" min="0" inputmode="numeric" />
+          <input type="number" id="catalogoCantMax" placeholder="Cantidad máxima" min="0" inputmode="numeric" />
         </div>
         <div id="catalogoGrid" class="catalog-grid"><div class="muted">Cargando...</div></div>
         <div class="note" id="catalogoCount" style="margin-top:8px"></div>
@@ -1371,6 +1381,11 @@
       const tipo = document.getElementById('catalogoTipo').value;
       const marca = document.getElementById('catalogoMarca').value;
       const conFoto = document.getElementById('catalogoConFoto').value;
+      const cantidad = document.getElementById('catalogoCantidad').value;
+      const minRaw = document.getElementById('catalogoCantMin').value.trim();
+      const maxRaw = document.getElementById('catalogoCantMax').value.trim();
+      const cantMin = minRaw === '' ? null : Number(minRaw);
+      const cantMax = maxRaw === '' ? null : Number(maxRaw);
 
       const filtered = stockData.filter(r => {
         if (q && !(String(r.sku).toLowerCase().includes(q) || String(r.descripcion).toLowerCase().includes(q))) return false;
@@ -1378,6 +1393,14 @@
         if (marca && r.marca !== marca) return false;
         if (conFoto === 'con' && !r.imagenUrl) return false;
         if (conFoto === 'sin' && r.imagenUrl) return false;
+        const qty = Number(r.stockActual) || 0;
+        if (cantidad === 'con' && !(qty > 0)) return false;
+        if (cantidad === 'bajo' && !(qty > 0 && qty <= 5)) return false;
+        if (cantidad === 'cero' && qty > 0) return false;
+        if (cantidad === 'mas5' && !(qty > 5)) return false;
+        if (cantidad === 'mas20' && !(qty > 20)) return false;
+        if (cantMin !== null && !isNaN(cantMin) && qty < cantMin) return false;
+        if (cantMax !== null && !isNaN(cantMax) && qty > cantMax) return false;
         return true;
       });
 
@@ -1403,6 +1426,9 @@
     document.getElementById('catalogoTipo').addEventListener('change', renderCatalogo);
     document.getElementById('catalogoMarca').addEventListener('change', renderCatalogo);
     document.getElementById('catalogoConFoto').addEventListener('change', renderCatalogo);
+    document.getElementById('catalogoCantidad').addEventListener('change', renderCatalogo);
+    document.getElementById('catalogoCantMin').addEventListener('input', _debounce(renderCatalogo, 200));
+    document.getElementById('catalogoCantMax').addEventListener('input', _debounce(renderCatalogo, 200));
     document.getElementById('catalogoRefresh').onclick = (e) => { e.preventDefault(); ensureStockLoaded(true).then(() => { fillCatalogoFilterOptions(); renderCatalogo(); }); };
     document.getElementById('catalogoClearFilters').onclick = (e) => {
       e.preventDefault();
@@ -1410,6 +1436,9 @@
       document.getElementById('catalogoTipo').value = '';
       document.getElementById('catalogoMarca').value = '';
       document.getElementById('catalogoConFoto').value = '';
+      document.getElementById('catalogoCantidad').value = '';
+      document.getElementById('catalogoCantMin').value = '';
+      document.getElementById('catalogoCantMax').value = '';
       renderCatalogo();
     };
 
