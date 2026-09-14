@@ -367,9 +367,9 @@
         <div class="stock-table-wrap">
           <table class="grid">
             <thead>
-              <tr><th>Foto</th><th>SKU</th><th>Descripción</th><th>Tipo</th><th>Marca</th><th>Stock inicial</th><th>Entregado</th><th>Stock actual</th></tr>
+              <tr><th>Foto</th><th>SKU</th><th>Descripción</th><th>Tipo</th><th>Marca</th><th>1er ingreso</th><th>QR</th><th>Stock inicial</th><th>Entregado</th><th>Stock actual</th></tr>
             </thead>
-            <tbody id="stockBody"><tr><td colspan="8" class="muted">Cargando...</td></tr></tbody>
+            <tbody id="stockBody"><tr><td colspan="10" class="muted">Cargando...</td></tr></tbody>
           </table>
         </div>
         <div class="note" id="stockCount" style="margin-top:8px"></div>
@@ -1135,9 +1135,9 @@
       document.getElementById('fabAddLine').classList.toggle('visible', target === 'pg-remito');
 
       if (target === 'pg-stock') {
-        document.getElementById('stockBody').innerHTML = document.getElementById('stockBody').innerHTML || '<tr><td colspan="8" class="muted">Cargando...</td></tr>';
+        document.getElementById('stockBody').innerHTML = document.getElementById('stockBody').innerHTML || '<tr><td colspan="10" class="muted">Cargando...</td></tr>';
         ensureStockLoaded().then(() => { fillStockFilterOptions(); renderStockTable(); })
-          .catch(err => { document.getElementById('stockBody').innerHTML = '<tr><td colspan="8" class="err">Error: ' + err.message + '</td></tr>'; });
+          .catch(err => { document.getElementById('stockBody').innerHTML = '<tr><td colspan="10" class="err">Error: ' + err.message + '</td></tr>'; });
       }
       if (target === 'pg-catalogo') {
         ensureStockLoaded().then(() => { fillCatalogoFilterOptions(); renderCatalogo(); })
@@ -1279,7 +1279,7 @@
     }
 
     function loadStock(){ ensureStockLoaded(true).then(() => { fillStockFilterOptions(); renderStockTable(); })
-      .catch(err => { document.getElementById('stockBody').innerHTML = '<tr><td colspan="8" class="err">Error: ' + err.message + '</td></tr>'; }); }
+      .catch(err => { document.getElementById('stockBody').innerHTML = '<tr><td colspan="10" class="err">Error: ' + err.message + '</td></tr>'; }); }
 
     function fillStockFilterOptions(){
       const tipoSel = document.getElementById('stockTipo');
@@ -1290,6 +1290,12 @@
       tipoSel.innerHTML = '<option value="">Tipo (todos)</option>' + tipos.map(t => `<option value="${t}">${t}</option>`).join('');
       marcaSel.innerHTML = '<option value="">Marca (todos)</option>' + marcas.map(m => `<option value="${m}">${m}</option>`).join('');
       tipoSel.value = prevTipo; marcaSel.value = prevMarca;
+    }
+
+    function stockFechaDisplay(iso){
+      const m = String(iso || '').match(/^(\d{4})-(\d{2})-(\d{2})$/);
+      if (m) return m[3] + '/' + m[2] + '/' + m[1];
+      return iso ? iso : '<span class="muted">—</span>';
     }
 
     function renderStockTable(){
@@ -1309,7 +1315,7 @@
         return true;
       });
 
-      if (!filtered.length){ body.innerHTML = '<tr><td colspan="8" class="muted">Sin resultados.</td></tr>'; countEl.textContent = '0 productos'; return; }
+      if (!filtered.length){ body.innerHTML = '<tr><td colspan="10" class="muted">Sin resultados.</td></tr>'; countEl.textContent = '0 productos'; return; }
 
       body.innerHTML = filtered.map(r => `
         <tr>
@@ -1320,6 +1326,8 @@
           <td>${r.descripcion}</td>
           <td>${r.tipo}</td>
           <td>${r.marca}</td>
+          <td style="white-space:nowrap">${stockFechaDisplay(r.fechaIngreso)}</td>
+          <td>${r.qr === 'SI' ? 'Sí' : r.qr === 'NO' ? 'No' : '<span class="muted">—</span>'}</td>
           <td style="text-align:right">${r.stockInicial}</td>
           <td style="text-align:right">${r.entregado}</td>
           <td style="text-align:right" class="${r.stockActual<=5?'low':''}">${r.stockActual}</td>
