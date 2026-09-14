@@ -363,6 +363,12 @@
             <option value="bajo">Solo stock bajo (&lt;=5)</option>
             <option value="cero">Solo sin stock (0)</option>
           </select>
+          <select id="stockQr">
+            <option value="">QR (todos)</option>
+            <option value="SI">Con QR</option>
+            <option value="NO">Sin QR</option>
+            <option value="vacio">QR sin cargar</option>
+          </select>
         </div>
         <div class="stock-table-wrap">
           <table class="grid">
@@ -1305,6 +1311,7 @@
       const tipo = document.getElementById('stockTipo').value;
       const marca = document.getElementById('stockMarca').value;
       const bajo = document.getElementById('stockBajo').value;
+      const qr = document.getElementById('stockQr').value;
 
       const filtered = stockData.filter(r => {
         if (q && !(String(r.sku).toLowerCase().includes(q) || String(r.descripcion).toLowerCase().includes(q))) return false;
@@ -1312,6 +1319,7 @@
         if (marca && r.marca !== marca) return false;
         if (bajo === 'bajo' && !(r.stockActual > 0 && r.stockActual <= 5)) return false;
         if (bajo === 'cero' && r.stockActual > 0) return false;
+        if (qr === 'vacio' ? (r.qr === 'SI' || r.qr === 'NO') : (qr && r.qr !== qr)) return false;
         return true;
       });
 
@@ -1340,6 +1348,7 @@
     document.getElementById('stockTipo').addEventListener('change', renderStockTable);
     document.getElementById('stockMarca').addEventListener('change', renderStockTable);
     document.getElementById('stockBajo').addEventListener('change', renderStockTable);
+    document.getElementById('stockQr').addEventListener('change', renderStockTable);
     document.getElementById('stockRefresh').onclick = (e)=>{ e.preventDefault(); loadStock(); };
     document.getElementById('stockClearFilters').onclick = (e) => {
       e.preventDefault();
@@ -1347,6 +1356,7 @@
       document.getElementById('stockTipo').value = '';
       document.getElementById('stockMarca').value = '';
       document.getElementById('stockBajo').value = '';
+      document.getElementById('stockQr').value = '';
       renderStockTable();
     };
 
