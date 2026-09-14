@@ -213,6 +213,8 @@ function getStockMap_(sheetStock) {
     idxStockActual:  stockColIndex_(headers, ['stockactual']),
     idxImagen:       stockColIndex_(headers, ['imagen']),
     idxMedidas:      stockColIndex_(headers, ['medida']),
+    idxFechaIngreso: stockColIndex_(headers, ['primeringreso','primer ingreso']),
+    idxQr:           stockColIndex_(headers, ['qr']),
     lastRow: lastRow,
     lastCol: lastCol
   };
@@ -246,6 +248,22 @@ function ensureMedidasHeader_(shStock) {
   if (colIndex === -1) {
     colIndex = header.length;
     shStock.getRange(1, colIndex + 1).setValue('Medidas');
+  }
+  return colIndex + 1; // 1-based
+}
+
+/**
+ * Asegura que exista una columna en STOCK (buscada por patrones) y devuelve su índice (1-based).
+ * Mismo criterio que ensureMedidasHeader_: si no existe, la agrega al final con headerName.
+ */
+function ensureStockHeader_(shStock, patterns, headerName) {
+  const lastCol = Math.max(1, shStock.getLastColumn());
+  const header  = shStock.getRange(1,1,1,lastCol).getValues()[0];
+
+  let colIndex = stockColIndex_(header, patterns); // 0-based
+  if (colIndex === -1) {
+    colIndex = header.length;
+    shStock.getRange(1, colIndex + 1).setValue(headerName);
   }
   return colIndex + 1; // 1-based
 }
@@ -1054,7 +1072,9 @@ function handleGetStock_(ss) {
       entregado:    map.idxEntregado    >= 0 ? Number(r[map.idxEntregado] || 0) : 0,
       stockActual:  map.idxStockActual  >= 0 ? Number(r[map.idxStockActual] || 0) : 0,
       imagenUrl:    map.idxImagen       >= 0 ? String(r[map.idxImagen] || '') : '',
-      medidas:      map.idxMedidas      >= 0 ? String(r[map.idxMedidas] || '') : ''
+      medidas:      map.idxMedidas      >= 0 ? String(r[map.idxMedidas] || '') : '',
+      fechaIngreso: map.idxFechaIngreso >= 0 ? formatFechaIngreso_(r[map.idxFechaIngreso]) : '',
+      qr:           map.idxQr           >= 0 ? String(r[map.idxQr] || '') : ''
     }));
 
   return jsonOut({ ok:true, headerStockInicial: map.headers[map.idxStockInicial] || 'StockInicial', rows: rows });
@@ -1521,7 +1541,28 @@ function handleAddProducto_(shStock, producto) {
     shStock.getRange(targetRow, colMedidas).setValue(medidas);
   }
 
+  // Fecha de primer ingreso: llega como 'yyyy-mm-dd'; se guarda como Date local (sin corrimiento por zona horaria)
+  const fechaIngreso = String(producto.fechaIngreso || '').trim();
+  const mFecha = fechaIngreso.match(/^(\d{4})-(\d{2})-(\d{2})$/);
+  if (mFecha) {
+    const colFecha = ensureStockHeader_(shStock, ['primeringreso','primer ingreso'], 'FechaPrimerIngreso');
+    shStock.getRange(targetRow, colFecha)
+      .setValue(new Date(Number(mFecha[1]), Number(mFecha[2]) - 1, Number(mFecha[3])))
+      .setNumberFormat('dd/MM/yyyy');
+  }
+
+  const qr = String(producto.qr || '').trim();
+  if (qr === 'SI' || qr === 'NO') {
+    const colQr = ensureStockHeader_(shStock, ['qr'], 'QR');
+    shStock.getRange(targetRow, colQr).setValue(qr);
+  }
+
   return jsonOut({ ok:true, sku: sku, row: targetRow, imagenUrl: imagenUrl, imagenError: imagenError, medidas: medidas });
+}
+
+function formatFechaIngreso_(v) {
+  if (v instanceof Date) return Utilities.formatDate(v, Session.getScriptTimeZone(), 'yyyy-MM-dd');
+  return String(v || '');
 }
 
 /* ==========================================================

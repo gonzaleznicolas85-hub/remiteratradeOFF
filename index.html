@@ -453,6 +453,20 @@
             <input type="file" id="altaNuevoFile" accept="image/*" capture="environment" />
           </div>
         </div>
+        <div class="row" style="margin-top:10px">
+          <div>
+            <label>Fecha de primer ingreso *</label>
+            <input type="date" id="altaFechaIngreso" />
+          </div>
+          <div>
+            <label>QR *</label>
+            <select id="altaQr">
+              <option value="">Seleccionar...</option>
+              <option value="SI">Sí</option>
+              <option value="NO">No</option>
+            </select>
+          </div>
+        </div>
       </section>
       <section class="card right" id="altaNuevoSubmitWrap" style="display:none">
         <div class="actions">
@@ -1630,6 +1644,13 @@
       altaExistentePanel.style.display = 'none'; altaExistenteSubmitWrap.style.display = 'none';
       altaNuevoPanel.style.display = 'block'; altaNuevoSubmitWrap.style.display = 'flex';
       document.getElementById('altaNuevoSkuDisplay').textContent = skuTexto || 'se generará automáticamente';
+      const fechaIngreso = document.getElementById('altaFechaIngreso');
+      if (!fechaIngreso.value) fechaIngreso.value = altaHoyISO();
+    }
+
+    function altaHoyISO(){
+      const d = new Date();
+      return d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0');
     }
 
     function altaBuscarSku(){
@@ -1743,11 +1764,15 @@
       const stockInicial = Number(document.getElementById('altaStockInicial').value || 0);
       const medidas = document.getElementById('altaMedidas').value.trim();
       const file = document.getElementById('altaNuevoFile').files[0];
+      const fechaIngreso = document.getElementById('altaFechaIngreso').value;
+      const qr = document.getElementById('altaQr').value;
 
       if (!descripcion) { altaMsg.textContent = 'Completá al menos la Descripción.'; altaMsg.className = 'err'; return; }
+      if (!fechaIngreso) { altaMsg.textContent = 'Completá la Fecha de primer ingreso.'; altaMsg.className = 'err'; return; }
+      if (!qr) { altaMsg.textContent = 'Indicá si el producto tiene QR (Sí / No).'; altaMsg.className = 'err'; return; }
 
       try {
-        const producto = { descripcion, tipo, marca, stockInicial, medidas };
+        const producto = { descripcion, tipo, marca, stockInicial, medidas, fechaIngreso, qr };
         if (!altaModoAutoSku && skuManual) producto.sku = skuManual; // si no, el backend genera el SKU automáticamente
         if (file) { producto.imagenBase64 = await fileToCompressedBase64(file); producto.imagenName = (skuManual || 'nuevo') + '.jpg'; }
 
@@ -1760,7 +1785,7 @@
         } else {
           altaMsg.textContent = '✅ Producto ' + json.sku + ' agregado.'; altaMsg.className = 'ok';
         }
-        stockData.push({ sku: json.sku, descripcion, tipo, marca, stockInicial, entregado: 0, stockActual: stockInicial, imagenUrl: json.imagenUrl || '', medidas: json.medidas || medidas || '' });
+        stockData.push({ sku: json.sku, descripcion, tipo, marca, stockInicial, entregado: 0, stockActual: stockInicial, imagenUrl: json.imagenUrl || '', medidas: json.medidas || medidas || '', fechaIngreso, qr });
         refreshAllSkuDatalists(); // así el Remito ya puede usar este SKU nuevo sin recargar la página
 
         altaModoAutoSku = false;
@@ -1771,6 +1796,8 @@
         document.getElementById('altaStockInicial').value = '0';
         document.getElementById('altaMedidas').value = '';
         document.getElementById('altaNuevoFile').value = '';
+        document.getElementById('altaFechaIngreso').value = '';
+        document.getElementById('altaQr').value = '';
         altaBuscarSku();
       } catch (err) {
         altaMsg.textContent = '❌ Error de red: ' + err.message; altaMsg.className = 'err';
