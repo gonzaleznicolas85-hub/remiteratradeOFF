@@ -511,6 +511,22 @@
           </select>
           <input type="number" id="catalogoCantMin" placeholder="Cantidad mínima" min="0" inputmode="numeric" />
           <input type="number" id="catalogoCantMax" placeholder="Cantidad máxima" min="0" inputmode="numeric" />
+          <select id="catalogoQr">
+            <option value="">QR (todos)</option>
+            <option value="SI">Con QR</option>
+            <option value="NO">Sin QR</option>
+            <option value="vacio">QR sin cargar</option>
+          </select>
+        </div>
+        <div class="filters" style="grid-template-columns:1fr 1fr">
+          <div>
+            <label class="note" style="margin:0 0 4px">Primer ingreso desde</label>
+            <input type="date" id="catalogoIngresoDesde" />
+          </div>
+          <div>
+            <label class="note" style="margin:0 0 4px">Primer ingreso hasta</label>
+            <input type="date" id="catalogoIngresoHasta" />
+          </div>
         </div>
         <div id="catalogoGrid" class="catalog-grid"><div class="muted">Cargando...</div></div>
         <div class="note" id="catalogoCount" style="margin-top:8px"></div>
@@ -1418,6 +1434,9 @@
       const maxRaw = document.getElementById('catalogoCantMax').value.trim();
       const cantMin = minRaw === '' ? null : Number(minRaw);
       const cantMax = maxRaw === '' ? null : Number(maxRaw);
+      const qr = document.getElementById('catalogoQr').value;
+      const ingresoDesde = document.getElementById('catalogoIngresoDesde').value;
+      const ingresoHasta = document.getElementById('catalogoIngresoHasta').value;
 
       const filtered = stockData.filter(r => {
         if (q && !(String(r.sku).toLowerCase().includes(q) || String(r.descripcion).toLowerCase().includes(q))) return false;
@@ -1433,6 +1452,11 @@
         if (cantidad === 'mas20' && !(qty > 20)) return false;
         if (cantMin !== null && !isNaN(cantMin) && qty < cantMin) return false;
         if (cantMax !== null && !isNaN(cantMax) && qty > cantMax) return false;
+        if (qr === 'vacio' ? (r.qr === 'SI' || r.qr === 'NO') : (qr && r.qr !== qr)) return false;
+        // fechaIngreso viene como 'yyyy-mm-dd': la comparación de strings sirve como comparación de fechas
+        if ((ingresoDesde || ingresoHasta) && !r.fechaIngreso) return false;
+        if (ingresoDesde && r.fechaIngreso < ingresoDesde) return false;
+        if (ingresoHasta && r.fechaIngreso > ingresoHasta) return false;
         return true;
       });
 
@@ -1461,6 +1485,9 @@
     document.getElementById('catalogoCantidad').addEventListener('change', renderCatalogo);
     document.getElementById('catalogoCantMin').addEventListener('input', _debounce(renderCatalogo, 200));
     document.getElementById('catalogoCantMax').addEventListener('input', _debounce(renderCatalogo, 200));
+    document.getElementById('catalogoQr').addEventListener('change', renderCatalogo);
+    document.getElementById('catalogoIngresoDesde').addEventListener('change', renderCatalogo);
+    document.getElementById('catalogoIngresoHasta').addEventListener('change', renderCatalogo);
     document.getElementById('catalogoRefresh').onclick = (e) => { e.preventDefault(); ensureStockLoaded(true).then(() => { fillCatalogoFilterOptions(); renderCatalogo(); }); };
     document.getElementById('catalogoClearFilters').onclick = (e) => {
       e.preventDefault();
@@ -1471,6 +1498,9 @@
       document.getElementById('catalogoCantidad').value = '';
       document.getElementById('catalogoCantMin').value = '';
       document.getElementById('catalogoCantMax').value = '';
+      document.getElementById('catalogoQr').value = '';
+      document.getElementById('catalogoIngresoDesde').value = '';
+      document.getElementById('catalogoIngresoHasta').value = '';
       renderCatalogo();
     };
 
