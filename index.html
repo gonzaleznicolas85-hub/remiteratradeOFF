@@ -665,6 +665,7 @@
         <div class="modal-title" id="catalogModalTitle"></div>
         <div class="modal-meta" id="catalogModalMeta"></div>
         <div class="modal-meta" id="catalogModalMedidas"></div>
+        <div class="modal-meta" id="catalogModalIngresoQr"></div>
         <div class="modal-qty" id="catalogModalQty"></div>
         <div class="note" id="catalogModalZoomHint" style="margin-top:8px"></div>
       </div>
@@ -1536,6 +1537,10 @@
       document.getElementById('catalogModalTitle').textContent = r.descripcion || '(sin descripción)';
       document.getElementById('catalogModalMeta').textContent = r.tipo || '';
       document.getElementById('catalogModalMedidas').textContent = r.medidas ? '📐 Medidas: ' + r.medidas : '';
+      const ingresoQr = [];
+      if (r.fechaIngreso) ingresoQr.push('📅 Primer ingreso: ' + stockFechaDisplay(r.fechaIngreso));
+      if (r.qr === 'SI' || r.qr === 'NO') ingresoQr.push('QR: ' + (r.qr === 'SI' ? 'Sí' : 'No'));
+      document.getElementById('catalogModalIngresoQr').textContent = ingresoQr.join(' · ');
       document.getElementById('catalogModalQty').innerHTML =
         'Cantidad real: <strong class="' + (r.stockActual <= 5 ? 'low' : '') + '">' + r.stockActual + '</strong>';
 
