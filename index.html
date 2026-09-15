@@ -490,7 +490,7 @@
           <div class="note" style="margin:0">Catálogo completo: foto, descripción y cantidad real de cada SKU.</div>
           <div class="actions" style="width:auto">
             <button class="btn btn-ghost" id="catalogoClearFilters">Limpiar filtros</button>
-            <button class="btn btn-ghost" id="catalogoExport" style="width:auto">⬇ Exportar</button>
+            <button class="btn btn-ghost" id="catalogoExport" style="width:auto">⬇ Exportar PDF</button>
             <button class="btn btn-ghost" id="catalogoRefresh" style="width:auto">↻ Actualizar</button>
           </div>
         </div>
@@ -1529,7 +1529,71 @@
     document.getElementById('catalogoQr').addEventListener('change', renderCatalogo);
     document.getElementById('catalogoIngresoDesde').addEventListener('change', renderCatalogo);
     document.getElementById('catalogoIngresoHasta').addEventListener('change', renderCatalogo);
-    document.getElementById('catalogoExport').onclick = (e) => { e.preventDefault(); exportarStockCsv(getCatalogoFiltrado(), 'Catalogo'); };
+    /* Catálogo en PDF: todos los productos con stock > 0 (sin importar los filtros).
+     * Se arma en una ventana aparte y se abre el diálogo de impresión para "Guardar como PDF".
+     * No se genera en el servidor (la Netlify Function corta a los 10 s y con fotos no alcanza)
+     * ni con una librería JS (las fotos de Drive no permiten CORS, no se pueden meter en el PDF). */
+    function exportarCatalogoPdf(){
+      const productos = stockData.filter(r => (Number(r.stockActual) || 0) > 0);
+      if (!productos.length) { alert('No hay productos con stock para exportar.'); return; }
+
+      const win = window.open('', '_blank');
+      if (!win) { alert('El navegador bloqueó la ventana del PDF. Permití las ventanas emergentes para este sitio y probá de nuevo.'); return; }
+
+      const esc = (v) => String(v == null ? '' : v).replace(/[&<>"]/g, c => ({ '&':'&amp;', '<':'&lt;', '>':'&gt;', '"':'&quot;' }[c]));
+      const hoy = altaHoyISO().split('-').reverse().join('/');
+
+      const cards = productos.map(r => `
+        <div class="card">
+          <div class="foto">${r.imagenUrl ? `<img src="${esc(driveThumbUrl(r.imagenUrl, 500))}" alt="" />` : '<span class="noimg">📦</span>'}</div>
+          <div class="sku">${esc(r.sku)}${r.marca ? ' · ' + esc(r.marca) : ''}</div>
+          <div class="desc">${esc(r.descripcion || '(sin descripción)')}</div>
+          ${r.medidas ? `<div class="meta">📐 ${esc(r.medidas)}</div>` : ''}
+          <div class="qty">Cantidad: <strong>${esc(r.stockActual)}</strong></div>
+        </div>`).join('');
+
+      win.document.open();
+      win.document.write(`<!doctype html><html lang="es"><head><meta charset="utf-8" />
+        <title>Catalogo_${altaHoyISO()}</title>
+        <meta name="viewport" content="width=device-width, initial-scale=1" />
+        <style>
+          @page { size: A4; margin: 12mm; }
+          * { box-sizing: border-box; }
+          html { color-scheme: light; background: #fff; }
+          body { background: #fff; font-family: system-ui, -apple-system, "Segoe UI", Roboto, Arial, sans-serif; color: #111; margin: 0; padding: 16px; }
+          header { display: flex; justify-content: space-between; align-items: baseline; border-bottom: 2px solid #111; padding-bottom: 6px; margin-bottom: 12px; }
+          h1 { font-size: 20px; margin: 0; }
+          .sub { font-size: 12px; color: #555; }
+          .bar { margin-bottom: 12px; display: flex; gap: 8px; align-items: center; font-size: 13px; color: #555; }
+          .bar button { font: inherit; padding: 8px 14px; border-radius: 6px; border: 1px solid #111; background: #111; color: #fff; cursor: pointer; }
+          .grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; }
+          .card { border: 1px solid #ccc; border-radius: 6px; padding: 6px; break-inside: avoid; page-break-inside: avoid; }
+          .foto { height: 150px; display: flex; align-items: center; justify-content: center; background: #f4f4f4; border-radius: 4px; overflow: hidden; margin-bottom: 6px; }
+          .foto img { max-width: 100%; max-height: 100%; object-fit: contain; }
+          .noimg { font-size: 40px; opacity: .5; }
+          .sku { font-size: 11px; color: #555; }
+          .desc { font-size: 13px; font-weight: 600; margin: 2px 0; }
+          .meta, .qty { font-size: 11px; color: #333; }
+          @media print { body { padding: 0; } .bar { display: none; } }
+        </style></head><body>
+        <header><h1>Catálogo</h1><div class="sub">${hoy} · ${productos.length} productos con stock</div></header>
+        <div class="bar"><button type="button" onclick="window.print()">Guardar como PDF</button><span id="estado">Cargando fotos...</span></div>
+        <div class="grid">${cards}</div>
+      </body></html>`);
+      win.document.close();
+
+      // Esperar a que carguen las fotos (con tope de 20 s) antes de abrir el diálogo de impresión
+      const imgs = Array.from(win.document.images);
+      const cargas = imgs.map(img => img.complete ? Promise.resolve() : new Promise(res => { img.onload = img.onerror = res; }));
+      Promise.race([Promise.all(cargas), new Promise(res => setTimeout(res, 20000))]).then(() => {
+        const estado = win.document.getElementById('estado');
+        if (estado) estado.textContent = 'Elegí "Guardar como PDF" como impresora.';
+        win.focus();
+        win.print();
+      });
+    }
+
+    document.getElementById('catalogoExport').onclick = (e) => { e.preventDefault(); exportarCatalogoPdf(); };
     document.getElementById('catalogoRefresh').onclick = (e) => { e.preventDefault(); ensureStockLoaded(true).then(() => { fillCatalogoFilterOptions(); renderCatalogo(); }); };
     document.getElementById('catalogoClearFilters').onclick = (e) => {
       e.preventDefault();
