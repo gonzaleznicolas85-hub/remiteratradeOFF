@@ -1497,18 +1497,24 @@
       document.querySelectorAll('.msel.open').forEach(m => { m.classList.remove('open'); const b = m.querySelector('.msel-btn'); b.setAttribute('aria-expanded', 'false'); b.focus(); });
     });
 
-    /* Negocio: se deduce de la marca. Las marcas de esta lista son Cerveza; todo el resto es UNG (bebidas no alcohólicas).
-     * Para agregar una marca de cerveza, sumarla acá tal como figura en la columna Marca de STOCK. */
+    /* Negocio: se deduce de la marca. Las marcas de MARCAS_CERVEZA son Cerveza, las de MARCAS_VINO son Vino
+     * y todo el resto es UNG (bebidas no alcohólicas).
+     * Para agregar una marca, sumarla a la lista que corresponda tal como figura en la columna Marca de STOCK. */
     const MARCAS_CERVEZA = [
       'ANDES ORIGEN', 'BRAHMA', 'BUDWEISER', 'CHACHINGO', 'CORONA', 'GOOSE ISLAND',
       'MICHELOB', 'MULTIMARCA', 'PATAGONIA', 'QUILMES', 'STELLA ARTOIS'
     ];
+    const MARCAS_VINO = ['DANTE ROBINO'];
     function negocioDe(r){
-      return MARCAS_CERVEZA.includes(String(r.marca || '').trim().toUpperCase()) ? 'Cerveza' : 'UNG';
+      const marca = String(r.marca || '').trim().toUpperCase();
+      if (MARCAS_CERVEZA.includes(marca)) return 'Cerveza';
+      if (MARCAS_VINO.includes(marca)) return 'Vino';
+      return 'UNG';
     }
 
     msSetOptions('catalogoNegocio', 'Negocio', [
       { value: 'Cerveza', text: 'Cerveza' },
+      { value: 'Vino', text: 'Vino' },
       { value: 'UNG', text: 'UNG (bebidas no alcohólicas)' }
     ]);
     msSetOptions('catalogoConFoto', 'Foto', [
