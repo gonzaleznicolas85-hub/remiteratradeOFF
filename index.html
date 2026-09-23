@@ -1740,7 +1740,11 @@
 
       document.getElementById('catalogModalSku').textContent = r.sku + (r.marca ? ' · ' + r.marca : '');
       document.getElementById('catalogModalTitle').textContent = r.descripcion || '(sin descripción)';
-      document.getElementById('catalogModalMeta').textContent = r.tipo || '';
+      const negocio = negocioDe(r);
+      document.getElementById('catalogModalMeta').textContent = [
+        r.tipo,
+        negocio ? 'Negocio: ' + (negocio === 'UNG' ? 'UNG (bebidas no alcohólicas)' : negocio) : ''
+      ].filter(Boolean).join(' · ');
       document.getElementById('catalogModalMedidas').textContent = r.medidas ? '📐 Medidas: ' + r.medidas : '';
       const ingresoQr = [];
       if (r.fechaIngreso) ingresoQr.push('📅 Primer ingreso: ' + stockFechaDisplay(r.fechaIngreso));
