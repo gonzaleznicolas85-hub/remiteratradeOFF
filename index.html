@@ -1497,18 +1497,19 @@
       document.querySelectorAll('.msel.open').forEach(m => { m.classList.remove('open'); const b = m.querySelector('.msel-btn'); b.setAttribute('aria-expanded', 'false'); b.focus(); });
     });
 
-    /* Negocio: columna "Negocio" de STOCK. Se normaliza a 'Cerveza' / 'UNG' (bebidas no alcohólicas); vacío = sin asignar. */
+    /* Negocio: se deduce de la marca. Las marcas de esta lista son Cerveza; todo el resto es UNG (bebidas no alcohólicas).
+     * Para agregar una marca de cerveza, sumarla acá tal como figura en la columna Marca de STOCK. */
+    const MARCAS_CERVEZA = [
+      'ANDES ORIGEN', 'BRAHMA', 'BUDWEISER', 'CHACHINGO', 'CORONA', 'GOOSE ISLAND',
+      'MICHELOB', 'MULTIMARCA', 'PATAGONIA', 'QUILMES', 'STELLA ARTOIS'
+    ];
     function negocioDe(r){
-      const n = String(r.negocio || '').toUpperCase();
-      if (n.includes('CERV')) return 'Cerveza';
-      if (n.includes('UNG') || n.includes('NO ALC') || n.includes('SIN ALC')) return 'UNG';
-      return '';
+      return MARCAS_CERVEZA.includes(String(r.marca || '').trim().toUpperCase()) ? 'Cerveza' : 'UNG';
     }
 
     msSetOptions('catalogoNegocio', 'Negocio', [
       { value: 'Cerveza', text: 'Cerveza' },
-      { value: 'UNG', text: 'UNG (bebidas no alcohólicas)' },
-      { value: '', text: 'Sin asignar' }
+      { value: 'UNG', text: 'UNG (bebidas no alcohólicas)' }
     ]);
     msSetOptions('catalogoConFoto', 'Foto', [
       { value: 'con', text: 'Con foto' },
@@ -1743,7 +1744,7 @@
       const negocio = negocioDe(r);
       document.getElementById('catalogModalMeta').textContent = [
         r.tipo,
-        negocio ? 'Negocio: ' + (negocio === 'UNG' ? 'UNG (bebidas no alcohólicas)' : negocio) : ''
+        'Negocio: ' + (negocio === 'UNG' ? 'UNG (bebidas no alcohólicas)' : negocio)
       ].filter(Boolean).join(' · ');
       document.getElementById('catalogModalMedidas').textContent = r.medidas ? '📐 Medidas: ' + r.medidas : '';
       const ingresoQr = [];
