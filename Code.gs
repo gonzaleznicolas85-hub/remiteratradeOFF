@@ -215,6 +215,7 @@ function getStockMap_(sheetStock) {
     idxMedidas:      stockColIndex_(headers, ['medida']),
     idxFechaIngreso: stockColIndex_(headers, ['primeringreso','primer ingreso']),
     idxQr:           stockColIndex_(headers, ['qr']),
+    idxNegocio:      stockColIndex_(headers, ['negocio']),
     lastRow: lastRow,
     lastCol: lastCol
   };
@@ -1074,7 +1075,8 @@ function handleGetStock_(ss) {
       imagenUrl:    map.idxImagen       >= 0 ? String(r[map.idxImagen] || '') : '',
       medidas:      map.idxMedidas      >= 0 ? String(r[map.idxMedidas] || '') : '',
       fechaIngreso: map.idxFechaIngreso >= 0 ? formatFechaIngreso_(r[map.idxFechaIngreso]) : '',
-      qr:           map.idxQr           >= 0 ? String(r[map.idxQr] || '') : ''
+      qr:           map.idxQr           >= 0 ? String(r[map.idxQr] || '') : '',
+      negocio:      map.idxNegocio      >= 0 ? String(r[map.idxNegocio] || '').trim() : ''
     }));
 
   return jsonOut({ ok:true, headerStockInicial: map.headers[map.idxStockInicial] || 'StockInicial', rows: rows });

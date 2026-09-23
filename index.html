@@ -183,6 +183,19 @@
     .modal-nav-next{right:10px}
     .catalog-medidas{font-size:12px;color:var(--text-muted);margin-top:2px}
 
+    /* Filtro multiopción (desplegable con checkboxes) */
+    .msel{position:relative;min-width:0}
+    .msel-btn{display:flex;align-items:center;justify-content:space-between;gap:6px;text-align:left;cursor:pointer}
+    .msel-btn span{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+    .msel-btn::after{content:'▾';flex:none;color:var(--text-muted);font-size:12px}
+    .msel.has-value .msel-btn{border-color:var(--accent);background:var(--accent-soft);color:var(--accent-soft-text)}
+    .msel-panel{display:none;position:absolute;top:calc(100% + 4px);left:0;min-width:100%;max-height:280px;overflow:auto;background:var(--bg-elevated);border:1px solid var(--border);border-radius:10px;box-shadow:0 8px 24px rgba(0,0,0,.18);z-index:15;padding:6px}
+    .msel.open .msel-panel{display:block}
+    .msel-opt{display:flex;align-items:center;gap:8px;padding:8px;margin:0;border-radius:8px;cursor:pointer;font-size:14px;color:var(--text);white-space:nowrap}
+    .msel-opt:hover{background:var(--bg-subtle)}
+    .msel-opt input{width:18px;height:18px;min-height:0;padding:0;margin:0;flex:none;accent-color:var(--accent)}
+    .msel-empty{padding:8px;font-size:13px;color:var(--text-muted)}
+
     /* Pedidos del día */
     .pedido-card{background:var(--bg-elevated);border:1px solid var(--border);border-radius:10px;padding:10px 12px;margin-bottom:8px}
     .pedido-head{display:flex;justify-content:space-between;align-items:flex-start;gap:8px;flex-wrap:wrap}
@@ -496,29 +509,14 @@
         </div>
         <div class="filters">
           <input type="text" id="catalogoSearch" placeholder="Buscar SKU o descripción..." />
-          <select id="catalogoTipo"><option value="">Tipo (todos)</option></select>
-          <select id="catalogoMarca"><option value="">Marca (todos)</option></select>
-          <select id="catalogoConFoto">
-            <option value="">Con y sin foto</option>
-            <option value="con">Solo con foto</option>
-            <option value="sin">Solo sin foto</option>
-          </select>
-          <select id="catalogoCantidad">
-            <option value="">Cantidad (todas)</option>
-            <option value="con">Con stock (&gt;0)</option>
-            <option value="bajo">Stock bajo (1 a 5)</option>
-            <option value="cero">Sin stock (0)</option>
-            <option value="mas5">Más de 5</option>
-            <option value="mas20">Más de 20</option>
-          </select>
+          <div class="msel" id="catalogoNegocio"></div>
+          <div class="msel" id="catalogoTipo"></div>
+          <div class="msel" id="catalogoMarca"></div>
+          <div class="msel" id="catalogoConFoto"></div>
+          <div class="msel" id="catalogoCantidad"></div>
+          <div class="msel" id="catalogoQr"></div>
           <input type="number" id="catalogoCantMin" placeholder="Cantidad mínima" min="0" inputmode="numeric" />
           <input type="number" id="catalogoCantMax" placeholder="Cantidad máxima" min="0" inputmode="numeric" />
-          <select id="catalogoQr">
-            <option value="">QR (todos)</option>
-            <option value="SI">Con QR</option>
-            <option value="NO">Sin QR</option>
-            <option value="vacio">QR sin cargar</option>
-          </select>
         </div>
         <div class="filters" style="grid-template-columns:1fr 1fr">
           <div>
@@ -1448,46 +1446,126 @@
     /* =========================================================
      * CATÁLOGO
      * ========================================================= */
+    /* Filtro multiopción: <div class="msel" id="..."> se completa con un botón y un panel de checkboxes.
+     * Sin nada tildado = no filtra. Los checkboxes disparan 'change', que burbujea hasta el div. */
+    function msSetOptions(id, label, options){
+      const root = document.getElementById(id);
+      const prev = new Set(msValues(id));
+      const esc = (v) => String(v == null ? '' : v).replace(/[&<>"]/g, c => ({ '&':'&amp;', '<':'&lt;', '>':'&gt;', '"':'&quot;' }[c]));
+      if (!root.dataset.ready) {
+        root.dataset.ready = '1';
+        root.dataset.label = label;
+        root.innerHTML = '<button type="button" class="msel-btn" aria-haspopup="true" aria-expanded="false"><span></span></button><div class="msel-panel" role="group" aria-label="' + esc(label) + '"></div>';
+        const btn = root.querySelector('.msel-btn');
+        btn.addEventListener('click', () => {
+          const abrir = !root.classList.contains('open');
+          document.querySelectorAll('.msel.open').forEach(m => { m.classList.remove('open'); m.querySelector('.msel-btn').setAttribute('aria-expanded', 'false'); });
+          root.classList.toggle('open', abrir);
+          btn.setAttribute('aria-expanded', String(abrir));
+        });
+        root.addEventListener('change', () => msUpdateLabel(id));
+      }
+      root.querySelector('.msel-panel').innerHTML = options.length
+        ? options.map(o => `<label class="msel-opt"><input type="checkbox" value="${esc(o.value)}"${prev.has(o.value) ? ' checked' : ''} />${esc(o.text)}</label>`).join('')
+        : '<div class="msel-empty">Sin opciones</div>';
+      msUpdateLabel(id);
+    }
+    function msValues(id){
+      return [...document.querySelectorAll('#' + id + ' .msel-panel input:checked')].map(i => i.value);
+    }
+    function msClear(id){
+      document.querySelectorAll('#' + id + ' .msel-panel input:checked').forEach(i => { i.checked = false; });
+      msUpdateLabel(id);
+    }
+    function msUpdateLabel(id){
+      const root = document.getElementById(id);
+      const checked = [...root.querySelectorAll('.msel-panel input:checked')];
+      const label = root.dataset.label;
+      root.querySelector('.msel-btn span').textContent =
+        !checked.length ? label + ' (todos)'
+        : checked.length === 1 ? label + ': ' + checked[0].parentElement.textContent
+        : label + ' (' + checked.length + ')';
+      root.classList.toggle('has-value', checked.length > 0);
+    }
+    document.addEventListener('click', (e) => {
+      document.querySelectorAll('.msel.open').forEach(m => {
+        if (!m.contains(e.target)) { m.classList.remove('open'); m.querySelector('.msel-btn').setAttribute('aria-expanded', 'false'); }
+      });
+    });
+    document.addEventListener('keydown', (e) => {
+      if (e.key !== 'Escape') return;
+      document.querySelectorAll('.msel.open').forEach(m => { m.classList.remove('open'); const b = m.querySelector('.msel-btn'); b.setAttribute('aria-expanded', 'false'); b.focus(); });
+    });
+
+    /* Negocio: columna "Negocio" de STOCK. Se normaliza a 'Cerveza' / 'UNG' (bebidas no alcohólicas); vacío = sin asignar. */
+    function negocioDe(r){
+      const n = String(r.negocio || '').toUpperCase();
+      if (n.includes('CERV')) return 'Cerveza';
+      if (n.includes('UNG') || n.includes('NO ALC') || n.includes('SIN ALC')) return 'UNG';
+      return '';
+    }
+
+    msSetOptions('catalogoNegocio', 'Negocio', [
+      { value: 'Cerveza', text: 'Cerveza' },
+      { value: 'UNG', text: 'UNG (bebidas no alcohólicas)' },
+      { value: '', text: 'Sin asignar' }
+    ]);
+    msSetOptions('catalogoConFoto', 'Foto', [
+      { value: 'con', text: 'Con foto' },
+      { value: 'sin', text: 'Sin foto' }
+    ]);
+    msSetOptions('catalogoCantidad', 'Cantidad', [
+      { value: 'con', text: 'Con stock (>0)' },
+      { value: 'bajo', text: 'Stock bajo (1 a 5)' },
+      { value: 'cero', text: 'Sin stock (0)' },
+      { value: 'mas5', text: 'Más de 5' },
+      { value: 'mas20', text: 'Más de 20' }
+    ]);
+    msSetOptions('catalogoQr', 'QR', [
+      { value: 'SI', text: 'Con QR' },
+      { value: 'NO', text: 'Sin QR' },
+      { value: 'vacio', text: 'QR sin cargar' }
+    ]);
+    msSetOptions('catalogoTipo', 'Tipo', []);
+    msSetOptions('catalogoMarca', 'Marca', []);
+
     function fillCatalogoFilterOptions(){
-      const tipoSel = document.getElementById('catalogoTipo');
-      const marcaSel = document.getElementById('catalogoMarca');
       const tipos = [...new Set(stockData.map(r => r.tipo).filter(Boolean))].sort();
       const marcas = [...new Set(stockData.map(r => r.marca).filter(Boolean))].sort();
-      const prevTipo = tipoSel.value, prevMarca = marcaSel.value;
-      tipoSel.innerHTML = '<option value="">Tipo (todos)</option>' + tipos.map(t => `<option value="${t}">${t}</option>`).join('');
-      marcaSel.innerHTML = '<option value="">Marca (todos)</option>' + marcas.map(m => `<option value="${m}">${m}</option>`).join('');
-      tipoSel.value = prevTipo; marcaSel.value = prevMarca;
+      msSetOptions('catalogoTipo', 'Tipo', tipos.map(t => ({ value: t, text: t })));
+      msSetOptions('catalogoMarca', 'Marca', marcas.map(m => ({ value: m, text: m })));
     }
 
     function getCatalogoFiltrado(){
       const q =document.getElementById('catalogoSearch').value.trim().toLowerCase();
-      const tipo = document.getElementById('catalogoTipo').value;
-      const marca = document.getElementById('catalogoMarca').value;
-      const conFoto = document.getElementById('catalogoConFoto').value;
-      const cantidad = document.getElementById('catalogoCantidad').value;
+      const negocios = msValues('catalogoNegocio');
+      const tipos = msValues('catalogoTipo');
+      const marcas = msValues('catalogoMarca');
+      const fotos = msValues('catalogoConFoto');
+      const cantidades = msValues('catalogoCantidad');
       const minRaw = document.getElementById('catalogoCantMin').value.trim();
       const maxRaw = document.getElementById('catalogoCantMax').value.trim();
       const cantMin = minRaw === '' ? null : Number(minRaw);
       const cantMax = maxRaw === '' ? null : Number(maxRaw);
-      const qr = document.getElementById('catalogoQr').value;
+      const qrs = msValues('catalogoQr');
       const ingresoDesde = document.getElementById('catalogoIngresoDesde').value;
       const ingresoHasta = document.getElementById('catalogoIngresoHasta').value;
 
+      // Dentro de un mismo filtro las opciones se combinan con "o"; entre filtros distintos, con "y"
+      const cumpleCantidad = { con: q => q > 0, bajo: q => q > 0 && q <= 5, cero: q => q <= 0, mas5: q => q > 5, mas20: q => q > 20 };
+      const qrClave = (v) => (v === 'SI' || v === 'NO') ? v : 'vacio';
+
       return stockData.filter(r => {
         if (q && !(String(r.sku).toLowerCase().includes(q) || String(r.descripcion).toLowerCase().includes(q))) return false;
-        if (tipo && r.tipo !== tipo) return false;
-        if (marca && r.marca !== marca) return false;
-        if (conFoto === 'con' && !r.imagenUrl) return false;
-        if (conFoto === 'sin' && r.imagenUrl) return false;
+        if (negocios.length && !negocios.includes(negocioDe(r))) return false;
+        if (tipos.length && !tipos.includes(r.tipo)) return false;
+        if (marcas.length && !marcas.includes(r.marca)) return false;
+        if (fotos.length && !fotos.includes(r.imagenUrl ? 'con' : 'sin')) return false;
         const qty = Number(r.stockActual) || 0;
-        if (cantidad === 'con' && !(qty > 0)) return false;
-        if (cantidad === 'bajo' && !(qty > 0 && qty <= 5)) return false;
-        if (cantidad === 'cero' && qty > 0) return false;
-        if (cantidad === 'mas5' && !(qty > 5)) return false;
-        if (cantidad === 'mas20' && !(qty > 20)) return false;
+        if (cantidades.length && !cantidades.some(c => cumpleCantidad[c](qty))) return false;
         if (cantMin !== null && !isNaN(cantMin) && qty < cantMin) return false;
         if (cantMax !== null && !isNaN(cantMax) && qty > cantMax) return false;
-        if (qr === 'vacio' ? (r.qr === 'SI' || r.qr === 'NO') : (qr && r.qr !== qr)) return false;
+        if (qrs.length && !qrs.includes(qrClave(r.qr))) return false;
         // fechaIngreso viene como 'yyyy-mm-dd': la comparación de strings sirve como comparación de fechas
         if ((ingresoDesde || ingresoHasta) && !r.fechaIngreso) return false;
         if (ingresoDesde && r.fechaIngreso < ingresoDesde) return false;
@@ -1520,6 +1598,7 @@
     }
 
     document.getElementById('catalogoSearch').addEventListener('input', _debounce(renderCatalogo, 200));
+    document.getElementById('catalogoNegocio').addEventListener('change', renderCatalogo);
     document.getElementById('catalogoTipo').addEventListener('change', renderCatalogo);
     document.getElementById('catalogoMarca').addEventListener('change', renderCatalogo);
     document.getElementById('catalogoConFoto').addEventListener('change', renderCatalogo);
@@ -1529,13 +1608,36 @@
     document.getElementById('catalogoQr').addEventListener('change', renderCatalogo);
     document.getElementById('catalogoIngresoDesde').addEventListener('change', renderCatalogo);
     document.getElementById('catalogoIngresoHasta').addEventListener('change', renderCatalogo);
-    /* Catálogo en PDF: todos los productos con stock > 0 (sin importar los filtros).
+    /* Resumen legible de los filtros activos del catálogo, para el encabezado del PDF. */
+    function resumenFiltrosCatalogo(){
+      const partes = [];
+      const q = document.getElementById('catalogoSearch').value.trim();
+      if (q) partes.push('Búsqueda: "' + q + '"');
+      ['catalogoNegocio','catalogoTipo','catalogoMarca','catalogoConFoto','catalogoCantidad','catalogoQr'].forEach(id => {
+        const root = document.getElementById(id);
+        const textos = [...root.querySelectorAll('.msel-panel input:checked')].map(i => i.parentElement.textContent);
+        if (textos.length) partes.push(root.dataset.label + ': ' + textos.join(', '));
+      });
+      const min = document.getElementById('catalogoCantMin').value.trim();
+      const max = document.getElementById('catalogoCantMax').value.trim();
+      if (min) partes.push('Cantidad ≥ ' + min);
+      if (max) partes.push('Cantidad ≤ ' + max);
+      const fmt = (iso) => iso.split('-').reverse().join('/');
+      const desde = document.getElementById('catalogoIngresoDesde').value;
+      const hasta = document.getElementById('catalogoIngresoHasta').value;
+      if (desde) partes.push('Ingreso desde ' + fmt(desde));
+      if (hasta) partes.push('Ingreso hasta ' + fmt(hasta));
+      return partes.join(' · ');
+    }
+
+    /* Catálogo en PDF: exporta lo que se ve en el catálogo, con los filtros aplicados.
      * Se arma en una ventana aparte y se abre el diálogo de impresión para "Guardar como PDF".
      * No se genera en el servidor (la Netlify Function corta a los 10 s y con fotos no alcanza)
      * ni con una librería JS (las fotos de Drive no permiten CORS, no se pueden meter en el PDF). */
     function exportarCatalogoPdf(){
-      const productos = stockData.filter(r => (Number(r.stockActual) || 0) > 0);
-      if (!productos.length) { alert('No hay productos con stock para exportar.'); return; }
+      const productos = getCatalogoFiltrado();
+      if (!productos.length) { alert('No hay productos para exportar con los filtros actuales.'); return; }
+      const filtros = resumenFiltrosCatalogo();
 
       const win = window.open('', '_blank');
       if (!win) { alert('El navegador bloqueó la ventana del PDF. Permití las ventanas emergentes para este sitio y probá de nuevo.'); return; }
@@ -1564,6 +1666,7 @@
           header { display: flex; justify-content: space-between; align-items: baseline; border-bottom: 2px solid #111; padding-bottom: 6px; margin-bottom: 12px; }
           h1 { font-size: 20px; margin: 0; }
           .sub { font-size: 12px; color: #555; }
+          .filtros { font-size: 11px; color: #555; margin: -6px 0 12px; }
           .bar { margin-bottom: 12px; display: flex; gap: 8px; align-items: center; font-size: 13px; color: #555; }
           .bar button { font: inherit; padding: 8px 14px; border-radius: 6px; border: 1px solid #111; background: #111; color: #fff; cursor: pointer; }
           .grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; }
@@ -1576,7 +1679,8 @@
           .meta, .qty { font-size: 11px; color: #333; }
           @media print { body { padding: 0; } .bar { display: none; } }
         </style></head><body>
-        <header><h1>Catálogo</h1><div class="sub">${hoy} · ${productos.length} productos con stock</div></header>
+        <header><h1>Catálogo</h1><div class="sub">${hoy} · ${productos.length} ${productos.length === 1 ? 'producto' : 'productos'}</div></header>
+        <div class="filtros">${filtros ? 'Filtros: ' + esc(filtros) : 'Sin filtros (catálogo completo)'}</div>
         <div class="bar"><button type="button" onclick="window.print()">Guardar como PDF</button><span id="estado">Cargando fotos...</span></div>
         <div class="grid">${cards}</div>
       </body></html>`);
@@ -1598,13 +1702,9 @@
     document.getElementById('catalogoClearFilters').onclick = (e) => {
       e.preventDefault();
       document.getElementById('catalogoSearch').value = '';
-      document.getElementById('catalogoTipo').value = '';
-      document.getElementById('catalogoMarca').value = '';
-      document.getElementById('catalogoConFoto').value = '';
-      document.getElementById('catalogoCantidad').value = '';
+      ['catalogoNegocio','catalogoTipo','catalogoMarca','catalogoConFoto','catalogoCantidad','catalogoQr'].forEach(msClear);
       document.getElementById('catalogoCantMin').value = '';
       document.getElementById('catalogoCantMax').value = '';
-      document.getElementById('catalogoQr').value = '';
       document.getElementById('catalogoIngresoDesde').value = '';
       document.getElementById('catalogoIngresoHasta').value = '';
       renderCatalogo();
